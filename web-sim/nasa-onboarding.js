@@ -4,22 +4,22 @@ const NasaOnboarding = (() => {
   const DEMO_KEY        = 'DEMO_KEY';
   const MAX_ATTEMPTS    = 3;
   const LS_KEY          = 'nasa_api_key';
-  const LS_STATUS       = 'nasa_key_status'; // 'ok' | 'demo' | 'pending'
+  const LS_STATUS       = 'nasa_key_status'; // 'ok' | 'demo' | 'needs_setup'
 
   async function validateKey(key) {
     if (!key || key === DEMO_KEY) return { valid: false, isDemo: true };
 
-    // Prefer server-side validation (avoids CORS, key never hits browser network tab)
+    // Server-side validation — no CORS issues, key never in browser network tab
     if (window.Auth?.callEdge && window.Auth.getSession()) {
       try {
         const res = await Auth.callEdge('validate_nasa_key', {},
           { method: 'POST', body: JSON.stringify({ key }) });
         if (res?.valid === true)  return { valid: true, rateLimited: !!res.rateLimited };
         if (res?.valid === false) return { valid: false, reason: res.reason ?? 'invalid' };
-      } catch { /* fall through to direct */ }
+      } catch { /* fall through */ }
     }
 
-    // Fallback: direct browser call (for pre-auth validation)
+    // Fallback: direct browser call
     try {
       const res = await fetch(
         `https://api.nasa.gov/planetary/apod?api_key=${encodeURIComponent(key)}&thumbs=true`,
@@ -37,26 +37,20 @@ const NasaOnboarding = (() => {
   let attempts    = 0;
   let resolveFlow = null;
 
-  function run(hasExistingKey) {
+  function run() {
     return new Promise((resolve) => {
       resolveFlow = resolve;
       attempts    = 0;
-      // Mark pending so if user tabs away and returns, we re-show
-      localStorage.setItem(LS_STATUS, 'pending');
-      buildModal(hasExistingKey);
+      buildModal();
     });
   }
 
-  function buildModal(hasExistingKey) {
+  function buildModal() {
     document.getElementById('nasa-onboard-modal')?.remove();
 
     const el = document.createElement('div');
     el.id        = 'nasa-onboard-modal';
     el.className = 'modal nasa-onboard';
-
-    const notice = hasExistingKey
-      ? `<div class="onboard-notice warn"><span class="notice-icon">⚠</span> The key on file failed validation — it may be expired or incorrect.</div>`
-      : `<div class="onboard-notice info"><span class="notice-icon">ℹ</span> Live telemetry requires a NASA Open API key. They're <strong>free</strong> and arrive in seconds.</div>`;
 
     el.innerHTML = `
       <div class="modal-box onboard-box">
@@ -68,26 +62,16 @@ const NasaOnboarding = (() => {
           </div>
         </div>
 
-        <!-- Step 1: get key + paste -->
         <div class="onboard-step" id="step-get-key">
-          ${notice}
+          <div class="onboard-notice info">
+            <span class="notice-icon">ℹ</span>
+            Live telemetry requires a NASA Open API key. They're <strong>free</strong> and arrive in seconds.
+          </div>
           <div class="onboard-instructions">
-            <div class="step-row">
-              <span class="step-num">1</span>
-              <span>Click the button below — NASA's signup page opens in a new tab</span>
-            </div>
-            <div class="step-row">
-              <span class="step-num">2</span>
-              <span>Fill in your name and email on their page and submit</span>
-            </div>
-            <div class="step-row">
-              <span class="step-num">3</span>
-              <span>Copy the API key from the page or the confirmation email</span>
-            </div>
-            <div class="step-row">
-              <span class="step-num">4</span>
-              <span>Paste it below and hit Validate</span>
-            </div>
+            <div class="step-row"><span class="step-num">1</span><span>Click the button below — NASA's signup page opens in a new tab</span></div>
+            <div class="step-row"><span class="step-num">2</span><span>Fill in your name and email on their page and submit</span></div>
+            <div class="step-row"><span class="step-num">3</span><span>Copy the API key from the page or confirmation email</span></div>
+            <div class="step-row"><span class="step-num">4</span><span>Paste it below and hit Validate</span></div>
           </div>
 
           <button class="choice-btn primary open-nasa-btn" id="btn-open-nasa">
@@ -111,7 +95,6 @@ const NasaOnboarding = (() => {
           <button class="onboard-skip" id="btn-skip">Skip · use DEMO_KEY (30 req/hour limit)</button>
         </div>
 
-        <!-- Demo fallback -->
         <div class="onboard-step hidden" id="step-demo-fallback">
           <div class="onboard-notice danger">
             <span class="notice-icon">⚠</span>
@@ -125,7 +108,6 @@ const NasaOnboarding = (() => {
             <button class="auth-submit" id="btn-accept-demo">Continue with DEMO_KEY</button>
           </div>
         </div>
-
       </div>
     `;
 
@@ -136,24 +118,23 @@ const NasaOnboarding = (() => {
   function wireModal(el) {
     el.querySelector('#btn-open-nasa').onclick = () => {
       window.open(NASA_SIGNUP_URL, '_blank', 'noopener');
-      // Focus the input so it's ready to paste when they come back
       setTimeout(() => el.querySelector('#ob-key')?.focus(), 300);
     };
 
     el.querySelector('#btn-skip').onclick = () => finish(el, DEMO_KEY, true);
 
-    const counterEl = el.querySelector('#attempt-counter');
+    const counterEl  = el.querySelector('#attempt-counter');
     const updateCounter = () => {
       if (counterEl && attempts > 0)
         counterEl.textContent = `(attempt ${attempts + 1} of ${MAX_ATTEMPTS})`;
     };
 
     const doValidate = async () => {
-      const input   = el.querySelector('#ob-key');
-      const errEl   = el.querySelector('#key-error');
-      const sucEl   = el.querySelector('#key-success');
-      const btn     = el.querySelector('#btn-validate');
-      const key     = input.value.trim();
+      const input = el.querySelector('#ob-key');
+      const errEl = el.querySelector('#key-error');
+      const sucEl = el.querySelector('#key-success');
+      const btn   = el.querySelector('#btn-validate');
+      const key   = input.value.trim();
 
       if (!key) { showErr(errEl, 'Please paste your NASA API key first.'); return; }
 
@@ -216,7 +197,6 @@ const NasaOnboarding = (() => {
     localStorage.setItem(LS_KEY,    key);
     localStorage.setItem(LS_STATUS, isDemo ? 'demo' : 'ok');
     el.remove();
-    // Persist validated key to DB (silently — don't block UX)
     if (!isDemo && window.Auth?.callEdge) {
       Auth.callEdge('save_nasa_key', {}, { method: 'POST', body: JSON.stringify({ key }) })
         .catch(() => {});
@@ -225,48 +205,32 @@ const NasaOnboarding = (() => {
     if (resolveFlow) resolveFlow({ key, isDemo });
   }
 
-  // Re-attach modal if user tabbed away mid-flow and came back
-  function reattachIfPending() {
-    if (localStorage.getItem(LS_STATUS) === 'pending') {
-      const stored = localStorage.getItem(LS_KEY);
-      buildModal(stored && stored !== DEMO_KEY);
-      // Re-wire resolve to a no-op since we're outside the normal promise flow;
-      // app.js listens to the nasa-key:ready event instead
-      resolveFlow = () => {};
-    }
-  }
-
+  // Entry point — called from app.js after auth:ready for pro/admin users
   async function checkAndPromptIfNeeded() {
     const stored = localStorage.getItem(LS_KEY);
     const status = localStorage.getItem(LS_STATUS);
 
-    // Trust cached status from this device
-    if (status === 'ok' && stored && stored !== DEMO_KEY) return { key: stored, isDemo: false };
-    if (status === 'demo') return { key: DEMO_KEY, isDemo: true };
+    // Already confirmed on this device
+    if (status === 'ok' && stored) return { key: stored, isDemo: false };
+    if (status === 'demo')         return { key: DEMO_KEY, isDemo: true };
 
-    // No local cache — check DB (covers first login on this device, or key set elsewhere)
+    // Check DB — covers new device or key saved on another device
     if (window.Auth?.callEdge) {
       try {
         const result = await Auth.callEdge('get_nasa_key');
         if (result?.hasKey) {
           localStorage.setItem(LS_STATUS, 'ok');
           localStorage.setItem(LS_KEY, '__db__');
-          // Dismiss any modal that reattachIfPending may have already shown
-          document.getElementById('nasa-onboard-modal')?.remove();
           return { key: '__db__', isDemo: false };
         }
-      } catch { /* network error — fall through to onboarding */ }
+      } catch { /* fall through */ }
     }
 
-    // Truly no key anywhere — run onboarding
-    return run(stored && stored !== DEMO_KEY ? stored : null);
+    // No key found anywhere — clear any stale state and show setup
+    localStorage.removeItem(LS_KEY);
+    localStorage.removeItem(LS_STATUS);
+    return run();
   }
-
-  // On page load, re-show modal if onboarding was in progress
-  window.addEventListener('load', () => {
-    // Small delay so auth.js can fire auth:ready first
-    setTimeout(reattachIfPending, 500);
-  });
 
   return { checkAndPromptIfNeeded, validateKey };
 })();
