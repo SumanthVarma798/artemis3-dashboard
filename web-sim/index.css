@@ -124,12 +124,67 @@ html, body {
 .panel-sub { color: var(--text-dim); font-size: 10px; }
 
 /* ── Orbital panel ── */
-#panel-orbital { flex: 1; }
+#panel-orbital { flex: 1; position: relative; }
 #orbital-canvas {
   flex: 1;
   width: 100%;
   display: block;
   min-height: 0;
+  touch-action: none;
+}
+
+/* Hover tooltip over the 3D scene (fixed to viewport, attached to body) */
+.orbital-tooltip {
+  position: fixed;
+  z-index: 200;
+  pointer-events: none;
+  max-width: 240px;
+  padding: 9px 12px;
+  background: rgba(6, 12, 20, 0.92);
+  border: 1px solid rgba(0, 170, 255, 0.35);
+  backdrop-filter: blur(4px);
+  font-family: var(--font);
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.5);
+  transition: opacity 0.12s ease;
+}
+.orbital-tooltip.hidden { opacity: 0; }
+.ot-tag {
+  font-size: 8px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  margin-bottom: 3px;
+}
+.ot-title {
+  font-size: 12px;
+  font-weight: 800;
+  color: #fff;
+  letter-spacing: 1px;
+  margin-bottom: 6px;
+}
+.ot-line {
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.62);
+  line-height: 1.55;
+}
+.ot-hint {
+  margin-top: 6px;
+  font-size: 8px;
+  letter-spacing: 1px;
+  color: rgba(0, 170, 255, 0.6);
+  text-transform: uppercase;
+}
+
+/* Interaction hint, bottom-left of the scene */
+.orbital-hint {
+  position: absolute;
+  left: 12px;
+  bottom: 84px;
+  z-index: 15;
+  pointer-events: none;
+  font-size: 9px;
+  letter-spacing: 1px;
+  color: rgba(255, 255, 255, 0.28);
+  text-transform: uppercase;
 }
 .orbital-legend {
   display: flex;
