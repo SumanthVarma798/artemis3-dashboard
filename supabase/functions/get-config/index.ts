@@ -1,10 +1,3 @@
-// Edge Function: get-config
-// Called by authenticated dashboard clients to:
-//   1. Return their tier + feature flags
-//   2. Proxy NASA/Horizons API calls (so the key never reaches the browser)
-//
-// Deploy: supabase functions deploy get-config
-
 import { serve } from 'https://deno.land/std@0.177.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
@@ -14,9 +7,8 @@ const CORS = {
   'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
 }
 
-// Rate limits per tier (requests per hour)
 const RATE_LIMITS: Record<string, number> = {
-  free:  0,    // no live API calls
+  free:  0,
   pro:   60,
   admin: 999,
 }
@@ -39,7 +31,7 @@ serve(async (req) => {
     )
     if (authErr || !user) return json({ error: 'Invalid token' }, 401)
 
-    // ── Get user profile + tier ──
+    // ── Profile + tier ──
     const { data: profile } = await supabase
       .from('profiles')
       .select('tier')
@@ -48,7 +40,7 @@ serve(async (req) => {
 
     const tier = profile?.tier ?? 'free'
 
-    // ── Get feature flags for tier ──
+    // ── Feature flags ──
     const { data: flags } = await supabase
       .from('tier_features')
       .select('feature, enabled')
@@ -57,24 +49,50 @@ serve(async (req) => {
     const features: Record<string, boolean> = {}
     flags?.forEach(f => { features[f.feature] = f.enabled })
 
-    // ── Parse request ──
     const url    = new URL(req.url)
     const action = url.searchParams.get('action') ?? 'features'
 
-    // ── Action: features (always allowed) ──
+    // ── features (always allowed) ──
     if (action === 'features') {
       return json({ tier, features })
     }
 
-    // ── Actions below require pro/admin ──
+    // ── Pro/admin only beyond here ──
     if (tier === 'free') {
       return json({ error: 'Pro tier required', upgrade: true }, 403)
     }
 
-    // ── Rate limit check ──
-    const limit = RATE_LIMITS[tier] ?? 0
+    // ── save_nasa_key: store user's validated key in vault ──
+    if (action === 'save_nasa_key') {
+      const body    = await req.json().catch(() => ({}))
+      const keyVal  = body.key ?? ''
+      const isDemo  = !keyVal || keyVal === 'DEMO_KEY'
+
+      if (!isDemo) {
+        await supabase.from('api_key_vault').upsert(
+          { key_name: 'nasa_api_key', key_value: keyVal, user_id: user.id, min_tier: 'pro' },
+          { onConflict: 'key_name,user_id' }
+        )
+      }
+      return json({ saved: true, isDemo })
+    }
+
+    // ── get_nasa_key: return whether user has a key stored ──
+    if (action === 'get_nasa_key') {
+      const { data: row } = await supabase
+        .from('api_key_vault')
+        .select('key_value')
+        .eq('key_name', 'nasa_api_key')
+        .eq('user_id', user.id)
+        .single()
+
+      return json({ hasKey: !!row?.key_value, isDemo: !row?.key_value })
+    }
+
+    // ── Rate limit ──
+    const limit      = RATE_LIMITS[tier] ?? 0
     const oneHourAgo = new Date(Date.now() - 3_600_000).toISOString()
-    const { count } = await supabase
+    const { count }  = await supabase
       .from('api_usage')
       .select('*', { count: 'exact', head: true })
       .eq('user_id', user.id)
@@ -84,19 +102,27 @@ serve(async (req) => {
       return json({ error: 'Rate limit exceeded', retry_after: '1 hour' }, 429)
     }
 
-    // ── Fetch NASA API key from vault ──
-    const { data: vaultRow } = await supabase
+    // ── Resolve effective NASA key: user's own key → product key → DEMO_KEY ──
+    const { data: userKeyRow } = await supabase
       .from('api_key_vault')
       .select('key_value')
       .eq('key_name', 'nasa_api_key')
+      .eq('user_id', user.id)
       .single()
 
-    const nasaKey = vaultRow?.key_value ?? 'DEMO_KEY'
+    const { data: productKeyRow } = await supabase
+      .from('api_key_vault')
+      .select('key_value')
+      .eq('key_name', 'nasa_api_key')
+      .is('user_id', null)
+      .single()
+
+    const nasaKey = userKeyRow?.key_value || productKeyRow?.key_value || 'DEMO_KEY'
 
     // ── Log usage ──
     await supabase.from('api_usage').insert({ user_id: user.id, endpoint: action, tier })
 
-    // ── Action: horizons — proxy JPL Horizons API ──
+    // ── horizons ──
     if (action === 'horizons') {
       const target = url.searchParams.get('target') ?? '301'
       const now    = new Date()
@@ -115,7 +141,7 @@ serve(async (req) => {
       return json({ data, tier })
     }
 
-    // ── Action: dsn — proxy DSN Now XML ──
+    // ── dsn ──
     if (action === 'dsn') {
       const res  = await fetch('https://eyes.nasa.gov/dsn/data/dsn.xml')
       const text = await res.text()
@@ -124,17 +150,12 @@ serve(async (req) => {
       })
     }
 
-    // ── Action: nasa — generic NASA API proxy ──
-    // Accepts optional user_key param (validated client-side before being sent)
-    // Falls back to vault key if user_key is absent or DEMO_KEY
+    // ── nasa — generic NASA API proxy using the resolved key ──
     if (action === 'nasa') {
       const endpoint = url.searchParams.get('endpoint') ?? ''
       const queryStr = url.searchParams.get('params') ?? ''
-      const userKey  = url.searchParams.get('user_key') ?? ''
-      const effectiveKey = (userKey && userKey !== 'DEMO_KEY') ? userKey : nasaKey
-      const nasaUrl  = `https://api.nasa.gov/${endpoint}?api_key=${effectiveKey}&${queryStr}`
+      const nasaUrl  = `https://api.nasa.gov/${endpoint}?api_key=${nasaKey}&${queryStr}`
       const res      = await fetch(nasaUrl)
-      // Detect invalid key from NASA response
       if (res.status === 403) return json({ error: 'nasa_key_invalid', tier }, 403)
       const data = await res.json()
       return json({ data, tier })

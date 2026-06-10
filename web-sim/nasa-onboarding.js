@@ -200,10 +200,15 @@ const NasaOnboarding = (() => {
     btn.textContent = label;
   }
 
-  function finish(el, key, isDemo) {
+  async function finish(el, key, isDemo) {
     localStorage.setItem(LS_KEY,    key);
     localStorage.setItem(LS_STATUS, isDemo ? 'demo' : 'ok');
     el.remove();
+    // Persist validated key to DB (silently — don't block UX)
+    if (!isDemo && window.Auth?.callEdge) {
+      Auth.callEdge('save_nasa_key', {}, { method: 'POST', body: JSON.stringify({ key }) })
+        .catch(() => {});
+    }
     window.dispatchEvent(new CustomEvent('nasa-key:ready', { detail: { key, isDemo } }));
     if (resolveFlow) resolveFlow({ key, isDemo });
   }
@@ -223,11 +228,24 @@ const NasaOnboarding = (() => {
     const stored = localStorage.getItem(LS_KEY);
     const status = localStorage.getItem(LS_STATUS);
 
-    // Trust stored validation — don't burn an API call on every login
+    // Trust cached status from this device
     if (status === 'ok' && stored && stored !== DEMO_KEY) return { key: stored, isDemo: false };
     if (status === 'demo') return { key: DEMO_KEY, isDemo: true };
 
-    // No key yet (or 'pending' from a previous interrupted onboarding) — show flow
+    // No local cache — check DB (user may have validated on another device)
+    if (window.Auth?.callEdge) {
+      try {
+        const result = await Auth.callEdge('get_nasa_key');
+        if (result?.hasKey) {
+          // Key exists in DB — mark ok locally and proceed without showing modal
+          localStorage.setItem(LS_STATUS, 'ok');
+          localStorage.setItem(LS_KEY, '__db__'); // sentinel: key lives in DB, Edge Fn handles it
+          return { key: '__db__', isDemo: false };
+        }
+      } catch { /* network error — fall through to onboarding */ }
+    }
+
+    // Truly no key anywhere — run onboarding
     return run(stored && stored !== DEMO_KEY ? stored : null);
   }
 

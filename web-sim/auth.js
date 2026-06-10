@@ -69,11 +69,17 @@ const Auth = (() => {
   }
 
   // ── Public API proxy (pro only) ──
-  async function callEdge(action, params = {}) {
+  // options: { method: 'POST', body: '...' } for POST actions like save_nasa_key
+  async function callEdge(action, params = {}, options = {}) {
     if (!session) return null;
     const qs  = new URLSearchParams({ action, ...params });
     const res = await fetch(`${getConfig().url}/functions/v1/get-config?${qs}`, {
-      headers: { Authorization: `Bearer ${session.access_token}` },
+      method:  options.method ?? 'GET',
+      headers: {
+        Authorization:  `Bearer ${session.access_token}`,
+        'Content-Type': 'application/json',
+      },
+      body: options.body ?? undefined,
     });
     return res.json();
   }
