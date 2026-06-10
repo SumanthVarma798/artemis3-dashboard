@@ -198,8 +198,9 @@ const NasaOnboarding = (() => {
     localStorage.setItem(LS_STATUS, isDemo ? 'demo' : 'ok');
     el.remove();
     if (!isDemo && window.Auth?.callEdge) {
-      Auth.callEdge('save_nasa_key', {}, { method: 'POST', body: JSON.stringify({ key }) })
-        .catch(() => {});
+      // Save to DB — retry once on failure so cross-device login works
+      const save = () => Auth.callEdge('save_nasa_key', {}, { method: 'POST', body: JSON.stringify({ key }) });
+      save().catch(() => setTimeout(() => save().catch(() => {}), 3000));
     }
     window.dispatchEvent(new CustomEvent('nasa-key:ready', { detail: { key, isDemo } }));
     if (resolveFlow) resolveFlow({ key, isDemo });
