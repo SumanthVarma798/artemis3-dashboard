@@ -1,10 +1,13 @@
-// Three.js orbital visualization — Earth/Moon/Orion with enhanced graphics
+// Three.js orbital visualization — Earth/Moon/Orion with real NASA textures
 const Orbital3D = (() => {
   let renderer, scene, camera, animFrame;
-  let earthMesh, earthAtmo, moonMesh, orionMesh, starshipMesh;
+  let earthMesh, earthAtmo, earthLights, moonMesh, orionMesh, starshipMesh;
   let orionTrail, trajectoryLine;
   let moonAngle   = 0.4;
   let cameraAngle = 0;
+
+  const CDN = 'https://cdn.jsdelivr.net/gh/mrdoob/three.js@r160/examples/textures/planets/';
+  const loader = new THREE.TextureLoader();
 
   const state = {
     orionDistMoon:   null,
@@ -21,114 +24,7 @@ const Orbital3D = (() => {
   const TRAIL_LEN = 120;
   const trailPositions = [];
 
-  // ── Procedural canvas textures ──────────────────────────────────────────────
-
-  function makeEarthTexture() {
-    const c = document.createElement('canvas');
-    c.width = 512; c.height = 256;
-    const ctx = c.getContext('2d');
-
-    // Ocean
-    ctx.fillStyle = '#0a2a5c';
-    ctx.fillRect(0, 0, 512, 256);
-
-    // Ocean variation
-    for (let y = 0; y < 256; y++) {
-      for (let x = 0; x < 512; x += 4) {
-        const n = Math.sin(x * 0.08) * Math.cos(y * 0.12) * 0.5 + 0.5;
-        const a = n * 0.15;
-        ctx.fillStyle = `rgba(20,80,160,${a})`;
-        ctx.fillRect(x, y, 4, 1);
-      }
-    }
-
-    // Continents (approximate shapes)
-    ctx.fillStyle = '#2d5a27';
-    // North America
-    roundRect(ctx, 52, 40,  90, 80);
-    // South America
-    roundRect(ctx, 88, 130, 50, 80);
-    // Europe
-    roundRect(ctx, 220, 38, 40, 50);
-    // Africa
-    roundRect(ctx, 218, 88, 52, 100);
-    // Asia
-    roundRect(ctx, 260, 20, 130, 90);
-    // Australia
-    roundRect(ctx, 360, 150, 55, 40);
-    // Antarctica
-    ctx.fillStyle = '#ddeeff';
-    ctx.fillRect(0, 220, 512, 36);
-
-    // Ice caps
-    ctx.fillStyle = '#ddeeff';
-    ctx.fillRect(0, 0, 512, 14);
-
-    // Cloud layer
-    ctx.fillStyle = 'rgba(255,255,255,0.18)';
-    for (let i = 0; i < 60; i++) {
-      const cx2 = Math.random() * 512, cy2 = Math.random() * 256;
-      const rr = Math.random() * 30 + 10;
-      ctx.beginPath(); ctx.ellipse(cx2, cy2, rr, rr * 0.5, 0, 0, Math.PI * 2);
-      ctx.fill();
-    }
-
-    return new THREE.CanvasTexture(c);
-  }
-
-  function roundRect(ctx, x, y, w, h) {
-    ctx.beginPath();
-    ctx.roundRect(x, y, w, h, 8);
-    ctx.fill();
-  }
-
-  function makeMoonTexture() {
-    const c = document.createElement('canvas');
-    c.width = 512; c.height = 256;
-    const ctx = c.getContext('2d');
-
-    // Base: dark grey
-    ctx.fillStyle = '#888070';
-    ctx.fillRect(0, 0, 512, 256);
-
-    // Noise variation
-    for (let i = 0; i < 5000; i++) {
-      const x = Math.random() * 512, y = Math.random() * 256;
-      const s = Math.random() * 3;
-      const v = Math.floor(Math.random() * 40) - 20;
-      ctx.fillStyle = `rgba(${130+v},${120+v},${110+v},0.3)`;
-      ctx.fillRect(x, y, s, s);
-    }
-
-    // Maria (dark basaltic plains)
-    ctx.fillStyle = 'rgba(60,56,52,0.6)';
-    ctx.beginPath(); ctx.ellipse(120, 90, 65, 45, 0.4, 0, Math.PI * 2); ctx.fill();
-    ctx.beginPath(); ctx.ellipse(290, 110, 50, 35, -0.3, 0, Math.PI * 2); ctx.fill();
-    ctx.beginPath(); ctx.ellipse(200, 60, 40, 25, 0.1, 0, Math.PI * 2); ctx.fill();
-
-    // Craters
-    const craters = [
-      [80, 150, 22], [190, 180, 18], [350, 80, 25], [420, 160, 15],
-      [160, 120, 12], [300, 200, 20], [60, 60, 14], [440, 100, 10],
-      [250, 140, 8], [370, 200, 16],
-    ];
-    craters.forEach(([cx2, cy2, r]) => {
-      // Shadow
-      const g = ctx.createRadialGradient(cx2, cy2, r * 0.5, cx2, cy2, r);
-      g.addColorStop(0, 'rgba(30,28,24,0.85)');
-      g.addColorStop(0.7, 'rgba(50,46,40,0.5)');
-      g.addColorStop(1, 'rgba(100,95,85,0)');
-      ctx.fillStyle = g;
-      ctx.beginPath(); ctx.arc(cx2, cy2, r, 0, Math.PI * 2); ctx.fill();
-      // Rim highlight
-      ctx.strokeStyle = 'rgba(200,195,185,0.4)';
-      ctx.lineWidth = 1.5;
-      ctx.beginPath(); ctx.arc(cx2 - r * 0.15, cy2 - r * 0.15, r, Math.PI, Math.PI * 1.6);
-      ctx.stroke();
-    });
-
-    return new THREE.CanvasTexture(c);
-  }
+  // ── Glow sprite helper (still procedural — no photo needed) ─────────────────
 
   function makeGlowSprite(color, size = 128) {
     const c = document.createElement('canvas');
@@ -213,30 +109,43 @@ const Orbital3D = (() => {
   }
 
   function buildEarth() {
-    // Main sphere
-    const geo = new THREE.SphereGeometry(EARTH_R, 48, 48);
+    const geo = new THREE.SphereGeometry(EARTH_R, 64, 64);
     const mat = new THREE.MeshPhongMaterial({
-      map:      makeEarthTexture(),
-      specular: 0x224466,
-      shininess: 25,
-      emissive: 0x001122,
+      map:       loader.load(CDN + 'earth_atmos_2048.jpg'),
+      specularMap: loader.load(CDN + 'earth_specular_2048.jpg'),
+      normalMap: loader.load(CDN + 'earth_normal_2048.jpg'),
+      specular:  0x336688,
+      shininess: 30,
     });
     earthMesh = new THREE.Mesh(geo, mat);
     scene.add(earthMesh);
 
-    // Atmosphere glow (outer shell, additive)
+    // City-lights layer (visible on night side via subtractive trick)
+    const lightsTex = loader.load(CDN + 'earth_lights_2048.png');
+    const lightsGeo = new THREE.SphereGeometry(EARTH_R * 1.001, 64, 64);
+    const lightsMat = new THREE.MeshBasicMaterial({
+      map: lightsTex,
+      blending: THREE.AdditiveBlending,
+      transparent: true,
+      opacity: 0.7,
+      depthWrite: false,
+    });
+    earthLights = new THREE.Mesh(lightsGeo, lightsMat);
+    earthMesh.add(earthLights);
+
+    // Atmosphere shell
     const atmoGeo = new THREE.SphereGeometry(EARTH_R * 1.08, 32, 32);
     const atmoMat = new THREE.MeshPhongMaterial({
       color: 0x2255aa,
       transparent: true,
-      opacity: 0.18,
+      opacity: 0.15,
       side: THREE.FrontSide,
       depthWrite: false,
     });
     earthAtmo = new THREE.Mesh(atmoGeo, atmoMat);
     scene.add(earthAtmo);
 
-    // Rim glow sprite (billboard)
+    // Rim glow billboard
     const rimSprite = new THREE.Sprite(new THREE.SpriteMaterial({
       map: makeGlowSprite(0x3399ff, 256),
       transparent: true,
@@ -249,20 +158,20 @@ const Orbital3D = (() => {
   }
 
   function buildMoon() {
-    const geo = new THREE.SphereGeometry(MOON_R, 40, 40);
+    const geo = new THREE.SphereGeometry(MOON_R, 48, 48);
     const mat = new THREE.MeshPhongMaterial({
-      map: makeMoonTexture(),
-      emissive: 0x0a0906,
-      shininess: 5,
+      map:      loader.load(CDN + 'moon_1024.jpg'),
+      emissive: 0x0a0907,
+      shininess: 4,
     });
     moonMesh = new THREE.Mesh(geo, mat);
     scene.add(moonMesh);
 
-    // Subtle moonlight rim
+    // Subtle rim glow
     const rimSprite = new THREE.Sprite(new THREE.SpriteMaterial({
       map: makeGlowSprite(0xaa9977, 128),
       transparent: true,
-      opacity: 0.2,
+      opacity: 0.18,
       depthWrite: false,
       blending: THREE.AdditiveBlending,
     }));
