@@ -62,6 +62,19 @@ serve(async (req) => {
       return json({ error: 'Pro tier required', upgrade: true }, 403)
     }
 
+    // ── validate_nasa_key: test a key against NASA without saving ──
+    if (action === 'validate_nasa_key') {
+      const body   = await req.json().catch(() => ({}))
+      const keyVal = body.key ?? ''
+      if (!keyVal || keyVal === 'DEMO_KEY') return json({ valid: false, reason: 'invalid' })
+      const testUrl = `https://api.nasa.gov/planetary/apod?api_key=${encodeURIComponent(keyVal)}&thumbs=true`
+      const testRes = await fetch(testUrl)
+      if (testRes.status === 200)  return json({ valid: true })
+      if (testRes.status === 403)  return json({ valid: false, reason: 'invalid' })
+      if (testRes.status === 429)  return json({ valid: true,  rateLimited: true })
+      return json({ valid: false, reason: 'error', status: testRes.status })
+    }
+
     // ── save_nasa_key: store user's validated key in vault ──
     if (action === 'save_nasa_key') {
       const body    = await req.json().catch(() => ({}))

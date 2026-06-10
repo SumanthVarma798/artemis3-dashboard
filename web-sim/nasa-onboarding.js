@@ -8,6 +8,18 @@ const NasaOnboarding = (() => {
 
   async function validateKey(key) {
     if (!key || key === DEMO_KEY) return { valid: false, isDemo: true };
+
+    // Prefer server-side validation (avoids CORS, key never hits browser network tab)
+    if (window.Auth?.callEdge && window.Auth.getSession()) {
+      try {
+        const res = await Auth.callEdge('validate_nasa_key', {},
+          { method: 'POST', body: JSON.stringify({ key }) });
+        if (res?.valid === true)  return { valid: true, rateLimited: !!res.rateLimited };
+        if (res?.valid === false) return { valid: false, reason: res.reason ?? 'invalid' };
+      } catch { /* fall through to direct */ }
+    }
+
+    // Fallback: direct browser call (for pre-auth validation)
     try {
       const res = await fetch(
         `https://api.nasa.gov/planetary/apod?api_key=${encodeURIComponent(key)}&thumbs=true`,
@@ -232,14 +244,15 @@ const NasaOnboarding = (() => {
     if (status === 'ok' && stored && stored !== DEMO_KEY) return { key: stored, isDemo: false };
     if (status === 'demo') return { key: DEMO_KEY, isDemo: true };
 
-    // No local cache — check DB (user may have validated on another device)
+    // No local cache — check DB (covers first login on this device, or key set elsewhere)
     if (window.Auth?.callEdge) {
       try {
         const result = await Auth.callEdge('get_nasa_key');
         if (result?.hasKey) {
-          // Key exists in DB — mark ok locally and proceed without showing modal
           localStorage.setItem(LS_STATUS, 'ok');
-          localStorage.setItem(LS_KEY, '__db__'); // sentinel: key lives in DB, Edge Fn handles it
+          localStorage.setItem(LS_KEY, '__db__');
+          // Dismiss any modal that reattachIfPending may have already shown
+          document.getElementById('nasa-onboard-modal')?.remove();
           return { key: '__db__', isDemo: false };
         }
       } catch { /* network error — fall through to onboarding */ }
