@@ -223,13 +223,11 @@ const NasaOnboarding = (() => {
     const stored = localStorage.getItem(LS_KEY);
     const status = localStorage.getItem(LS_STATUS);
 
-    if (status === 'ok' && stored && stored !== DEMO_KEY) {
-      const result = await validateKey(stored);
-      if (result.valid || result.rateLimited) return { key: stored, isDemo: false };
-      // Key went stale — fall through to onboarding
-    }
+    // Trust stored validation — don't burn an API call on every login
+    if (status === 'ok' && stored && stored !== DEMO_KEY) return { key: stored, isDemo: false };
     if (status === 'demo') return { key: DEMO_KEY, isDemo: true };
 
+    // No key yet (or 'pending' from a previous interrupted onboarding) — show flow
     return run(stored && stored !== DEMO_KEY ? stored : null);
   }
 
