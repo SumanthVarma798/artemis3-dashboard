@@ -1,0 +1,11 @@
+Model Information:
+* title:	Blue Origin BE-4
+* source:	https://sketchfab.com/3d-models/blue-origin-be-4-9ddaccacc2fa4beaa4f2e576ca1e7b6e
+* author:	MartianDays (https://sketchfab.com/MartianDays)
+
+Model License:
+* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited. Commercial use is allowed.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "Blue Origin BE-4" (https://sketchfab.com/3d-models/blue-origin-be-4-9ddaccacc2fa4beaa4f2e576ca1e7b6e) by MartianDays (https://sketchfab.com/MartianDays) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)

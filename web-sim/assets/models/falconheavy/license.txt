@@ -1,0 +1,11 @@
+Model Information:
+* title:	SpaceX Falcon Heavy
+* source:	https://sketchfab.com/3d-models/spacex-falcon-heavy-2f11453207944cedba00e2c6c1aa1269
+* author:	SunnyChen753/SW fan (https://sketchfab.com/sunnychen753)
+
+Model License:
+* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited. Commercial use is allowed.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "SpaceX Falcon Heavy" (https://sketchfab.com/3d-models/spacex-falcon-heavy-2f11453207944cedba00e2c6c1aa1269) by SunnyChen753/SW fan (https://sketchfab.com/sunnychen753) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)

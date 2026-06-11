@@ -1,0 +1,11 @@
+Model Information:
+* title:	Artemis II - Space Launch System (SLS)
+* source:	https://sketchfab.com/3d-models/artemis-ii-space-launch-system-sls-adfc2a81cb97425c9c86ff9c347e5d96
+* author:	RapidReality (https://sketchfab.com/RapidReality)
+
+Model License:
+* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited. Commercial use is allowed.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "Artemis II - Space Launch System (SLS)" (https://sketchfab.com/3d-models/artemis-ii-space-launch-system-sls-adfc2a81cb97425c9c86ff9c347e5d96) by RapidReality (https://sketchfab.com/RapidReality) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
