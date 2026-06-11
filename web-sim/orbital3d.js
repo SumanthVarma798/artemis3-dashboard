@@ -7,7 +7,12 @@ const Orbital3D = (() => {
   let moonAngle = 0.4;
 
   const CDN    = 'https://cdn.jsdelivr.net/gh/mrdoob/three.js@r160/examples/textures/planets/';
+  // NASA Blue Marble / Black Marble imagery (CORS-enabled via jsdelivr)
+  const NASA   = 'https://cdn.jsdelivr.net/npm/three-globe@2.45.2/example/img/';
   const loader = new THREE.TextureLoader();
+
+  function texColor(url) { const t = loader.load(url); t.colorSpace = THREE.SRGBColorSpace; return t; }
+  function texData(url)  { return loader.load(url); }
 
   const state = {
     orionDistMoon:   null,
@@ -213,23 +218,25 @@ const Orbital3D = (() => {
   }
 
   function buildEarth() {
-    earthMesh = new THREE.Mesh(
-      new THREE.SphereGeometry(EARTH_R, 64, 64),
-      new THREE.MeshPhongMaterial({
-        map:         loader.load(CDN + 'earth_atmos_2048.jpg'),
-        specularMap: loader.load(CDN + 'earth_specular_2048.jpg'),
-        normalMap:   loader.load(CDN + 'earth_normal_2048.jpg'),
-        specular: 0x336688, shininess: 30,
-      })
-    );
+    // NASA Blue Marble day map + topology relief + ocean-mask specular
+    const earthMat = new THREE.MeshPhongMaterial({
+      map:         texColor(NASA + 'earth-blue-marble.jpg'),
+      bumpMap:     texData(NASA + 'earth-topology.png'),
+      bumpScale:   0.018,
+      specularMap: texData(NASA + 'earth-water.png'),
+      specular:    0x2a4a6a,
+      shininess:   16,
+    });
+    earthMesh = new THREE.Mesh(new THREE.SphereGeometry(EARTH_R, 96, 96), earthMat);
     earthMesh.userData = { root: 'earth', part: 'earth' };
     scene.add(earthMesh);
 
+    // NASA Black Marble city lights on the night side
     earthLights = new THREE.Mesh(
-      new THREE.SphereGeometry(EARTH_R * 1.001, 64, 64),
+      new THREE.SphereGeometry(EARTH_R * 1.001, 96, 96),
       new THREE.MeshBasicMaterial({
-        map: loader.load(CDN + 'earth_lights_2048.png'),
-        blending: THREE.AdditiveBlending, transparent: true, opacity: 0.7, depthWrite: false,
+        map: texColor(NASA + 'earth-night.jpg'),
+        blending: THREE.AdditiveBlending, transparent: true, opacity: 0.85, depthWrite: false,
       })
     );
     earthMesh.add(earthLights);
@@ -249,9 +256,15 @@ const Orbital3D = (() => {
   }
 
   function buildMoon() {
+    // NASA/USGS lunar mosaic; topology doubles as a subtle bump for crater relief
     moonMesh = new THREE.Mesh(
-      new THREE.SphereGeometry(MOON_R, 48, 48),
-      new THREE.MeshPhongMaterial({ map: loader.load(CDN + 'moon_1024.jpg'), emissive: 0x0a0907, shininess: 4 })
+      new THREE.SphereGeometry(MOON_R, 64, 64),
+      new THREE.MeshPhongMaterial({
+        map:       texColor(CDN + 'moon_1024.jpg'),
+        bumpMap:   texData(CDN + 'moon_1024.jpg'),
+        bumpScale: 0.004,
+        emissive:  0x0a0907, shininess: 3,
+      })
     );
     moonMesh.userData = { root: 'moon', part: 'moon' };
     scene.add(moonMesh);
@@ -266,8 +279,8 @@ const Orbital3D = (() => {
 
   function buildOrbitRing() {
     scene.add(new THREE.Mesh(
-      new THREE.TorusGeometry(ORBIT_R, 0.008, 4, 160).rotateX(Math.PI / 2),
-      new THREE.MeshBasicMaterial({ color: 0x1a3050, transparent: true, opacity: 0.6 })
+      new THREE.TorusGeometry(ORBIT_R, 0.006, 6, 200).rotateX(Math.PI / 2),
+      new THREE.MeshBasicMaterial({ color: 0x355a8c, transparent: true, opacity: 0.7 })
     ));
   }
 
@@ -418,10 +431,16 @@ const Orbital3D = (() => {
     for (let a = 0; a <= Math.PI * 2 + 0.01; a += 0.05) pts.push(nrhoLocal(a));
     const line = new THREE.Line(
       new THREE.BufferGeometry().setFromPoints(pts),
-      new THREE.LineDashedMaterial({ color: 0x2a6699, dashSize: 0.12, gapSize: 0.08, transparent: true, opacity: 0.6 })
+      new THREE.LineDashedMaterial({ color: 0x66ccff, dashSize: 0.14, gapSize: 0.07, transparent: true, opacity: 0.9 })
     );
     line.computeLineDistances();
     nrhoGroup.add(line);
+    // Soft additive halo so the orbit reads clearly against the Moon
+    const halo = new THREE.Line(
+      new THREE.BufferGeometry().setFromPoints(pts),
+      new THREE.LineBasicMaterial({ color: 0x3aa0ff, transparent: true, opacity: 0.22, blending: THREE.AdditiveBlending })
+    );
+    nrhoGroup.add(halo);
     scene.add(nrhoGroup);
   }
 
@@ -443,7 +462,7 @@ const Orbital3D = (() => {
     }
     trajectoryLine = new THREE.Line(
       new THREE.BufferGeometry().setFromPoints(pts),
-      new THREE.LineDashedMaterial({ color: 0x1a4060, dashSize: 0.18, gapSize: 0.12, transparent: true, opacity: 0.55 })
+      new THREE.LineDashedMaterial({ color: 0x4db8ff, dashSize: 0.16, gapSize: 0.10, transparent: true, opacity: 0.92 })
     );
     trajectoryLine.computeLineDistances();
     scene.add(trajectoryLine);

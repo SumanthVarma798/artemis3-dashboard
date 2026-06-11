@@ -14,8 +14,10 @@
   --text:      #c8d8f0;
   --text-dim:  #4a6080;
   --text-hi:   #ffffff;
-  --font:      'Courier New', Courier, monospace;
-  --topbar-h:  52px;
+  --font:         'Courier New', Courier, monospace;        /* instrument data */
+  --font-display: 'Spectral', Georgia, 'Times New Roman', serif; /* exhibit headings */
+  --font-label:   'Barlow Condensed', 'Helvetica Neue', Arial, sans-serif; /* signage labels */
+  --topbar-h:  56px;
   --footer-h:  28px;
 }
 
@@ -43,16 +45,47 @@ html, body {
 }
 .tb-left { display: flex; align-items: center; gap: 14px; }
 .logo { color: var(--accent); font-size: 13px; font-weight: bold; letter-spacing: 2px; }
-.mission-name { color: var(--text-hi); font-size: 16px; font-weight: bold; letter-spacing: 4px; }
+.mission-name {
+  font-family: var(--font-display);
+  color: var(--text-hi);
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: 3px;
+}
 .phase-badge {
   background: #1a2a44;
   border: 1px solid var(--accent);
   color: var(--accent);
-  padding: 2px 8px;
-  font-size: 10px;
+  font-family: var(--font-label);
+  padding: 2px 9px;
+  font-size: 11px;
+  font-weight: 600;
   letter-spacing: 2px;
   border-radius: 2px;
 }
+
+/* ── Exhibit nav (Story / Hangar buttons in the top bar) ── */
+.tb-nav { display: inline-flex; gap: 8px; margin-left: 8px; }
+.tb-exhibit {
+  --exhibit-accent: var(--accent);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: transparent;
+  border: 1px solid color-mix(in srgb, var(--exhibit-accent) 50%, transparent);
+  color: var(--exhibit-accent);
+  font-family: var(--font-label);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  padding: 5px 13px;
+  border-radius: 2px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.tb-exhibit:hover { background: var(--exhibit-accent); color: #04121d; border-color: var(--exhibit-accent); }
+.tb-exhibit .lb-glyph { font-size: 13px; line-height: 1; }
 .phase-badge.active { border-color: var(--ok); color: var(--ok); }
 .phase-badge.critical { border-color: var(--danger); color: var(--danger); }
 
@@ -117,11 +150,13 @@ html, body {
 }
 .panel-title {
   color: var(--accent);
-  font-size: 11px;
+  font-family: var(--font-label);
+  font-size: 15px;
   letter-spacing: 3px;
-  font-weight: bold;
+  font-weight: 600;
+  text-transform: uppercase;
 }
-.panel-sub { color: var(--text-dim); font-size: 10px; }
+.panel-sub { color: var(--text-dim); font-size: 11px; }
 
 /* ── Orbital panel ── */
 #panel-orbital { flex: 1; position: relative; }
@@ -220,8 +255,8 @@ html, body {
   text-align: center;
 }
 .telem-item:last-child { border-right: none; }
-.tl-label { font-size: 9px; color: var(--text-dim); letter-spacing: 1px; margin-bottom: 2px; }
-.tl-val { font-size: 13px; color: var(--text-hi); font-weight: bold; }
+.tl-label { font-family: var(--font-label); font-size: 11px; color: var(--text-dim); letter-spacing: 1.5px; margin-bottom: 2px; text-transform: uppercase; }
+.tl-val { font-size: 14px; color: var(--text-hi); font-weight: bold; }
 
 /* ── DSN panel ── */
 #panel-dsn { flex: 1; overflow-y: auto; }
@@ -327,7 +362,7 @@ html, body {
   justify-content: space-between;
   margin-bottom: 6px;
 }
-.prov-name { font-size: 11px; font-weight: bold; letter-spacing: 2px; }
+.prov-name { font-family: var(--font-label); font-size: 14px; font-weight: 600; letter-spacing: 2px; }
 .prov-card.spacex     .prov-name { color: var(--accent2); }
 .prov-card.blueorigin .prov-name { color: var(--accent); }
 .prov-sub { font-size: 9px; color: var(--text-dim); letter-spacing: 0.5px; }

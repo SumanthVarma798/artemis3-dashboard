@@ -922,9 +922,10 @@ const StoryMode = (() => {
     // Open button
     const openBtn = document.createElement('button');
     openBtn.id        = 'story-open-btn';
-    openBtn.textContent = '⬡ STORY MODE';
+    openBtn.className = 'tb-exhibit';
+    openBtn.innerHTML = '<span class="lb-glyph">⬡</span> STORY';
     openBtn.onclick   = () => open(0);
-    document.body.appendChild(openBtn);
+    (document.getElementById('exhibit-nav') || document.body).appendChild(openBtn);
 
     // Overlay
     overlay = document.createElement('div');

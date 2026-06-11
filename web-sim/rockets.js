@@ -184,9 +184,10 @@ const RocketHangar = (() => {
 
     const btn = document.createElement('button');
     btn.id = 'rocket-open-btn';
-    btn.innerHTML = '<span class="lb-glyph">⬢</span> ROCKET HANGAR';
+    btn.className = 'tb-exhibit';
+    btn.innerHTML = '<span class="lb-glyph">⬢</span> HANGAR';
     btn.onclick = open;
-    document.body.appendChild(btn);
+    (document.getElementById('exhibit-nav') || document.body).appendChild(btn);
 
     const overlay = document.createElement('div');
     overlay.id = 'rocket-overlay';

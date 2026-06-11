@@ -2,23 +2,8 @@
    ROCKET HANGAR — 3D vehicle viewer + spec sheet
    ═══════════════════════════════════════════════ */
 
-#rocket-open-btn {
-  position: fixed;
-  bottom: 28px;
-  right: 188px;
-  z-index: 50;
-  background: transparent;
-  border: 1px solid var(--accent2);
-  color: var(--accent2);
-  padding: 9px 18px;
-  font-family: var(--font);
-  font-size: 10px;
-  letter-spacing: 2px;
-  cursor: pointer;
-  text-transform: uppercase;
-  transition: background 0.2s, color 0.2s;
-}
-#rocket-open-btn:hover { background: var(--accent2); color: #000; }
+/* Rocket Hangar launch button lives in the top-bar exhibit nav (see .tb-exhibit) */
+#rocket-open-btn { --exhibit-accent: var(--accent2); }
 
 #rocket-overlay {
   position: fixed;
@@ -42,7 +27,7 @@
   border-bottom: 1px solid rgba(255,255,255,0.08);
   flex-shrink: 0;
 }
-.rh-logo { font-size: 11px; letter-spacing: 3px; color: rgba(255,255,255,0.55); }
+.rh-logo { font-family: var(--font-label); font-size: 14px; font-weight: 600; letter-spacing: 3px; color: rgba(255,255,255,0.6); }
 .rh-logo span { color: var(--accent2); }
 .rh-source { font-size: 9px; letter-spacing: 1px; color: var(--text-dim); margin-left: auto; }
 .rh-close {
@@ -90,7 +75,7 @@
 .rh-item.na { border-left-color: #fc3d21; }
 .rh-item:hover { background: rgba(255,255,255,0.05); }
 .rh-item.active { background: rgba(0,170,255,0.08); border-color: var(--accent); }
-.rh-item-name { font-size: 12px; font-weight: bold; color: #fff; letter-spacing: 1px; }
+.rh-item-name { font-family: var(--font-label); font-size: 15px; font-weight: 600; color: #fff; letter-spacing: 1px; }
 .rh-item-co { font-size: 9px; color: var(--text-dim); letter-spacing: 0.5px; }
 
 /* 3D stage */
@@ -138,7 +123,7 @@
 .rh-spec-co.bo { color: var(--accent); }
 .rh-spec-co.na { color: #fc3d21; }
 .rh-item.na .rh-item-name { color: #fff; }
-.rh-spec-name { font-size: 26px; font-weight: 900; color: #fff; letter-spacing: 0.5px; line-height: 1.1; }
+.rh-spec-name { font-family: var(--font-display); font-size: 34px; font-weight: 800; color: #fff; letter-spacing: 0.4px; line-height: 1.05; }
 .rh-spec-role { font-size: 10px; color: var(--text-dim); margin-top: 8px; letter-spacing: 0.5px; }
 
 .rh-spec-grid {
