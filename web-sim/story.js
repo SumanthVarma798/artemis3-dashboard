@@ -907,6 +907,59 @@ const StoryMode = (() => {
     ctx.textAlign = 'left'; ctx.fillText('EQUATOR', x0 + 4, eqY - 3);
   }
 
+  // ─── NASA Astronomy Picture of the Day backgrounds ──────────────────────────
+
+  let apods = [];
+
+  async function loadApod() {
+    if (apods.length) return apods;
+    const day      = new Date().toISOString().slice(0, 10);
+    const cacheKey = 'apod_bg_' + day;
+    try {
+      const cached = localStorage.getItem(cacheKey);
+      if (cached) { apods = JSON.parse(cached); if (apods.length) return apods; }
+    } catch { /* ignore */ }
+
+    let raw = [];
+    try {
+      // Prefer the authenticated Edge Function (uses the user's NASA key); else DEMO_KEY
+      if (window.Auth?.callEdge && window.Auth.getSession?.()) {
+        const r = await Auth.callEdge('nasa', { endpoint: 'planetary/apod', params: 'count=12' });
+        if (Array.isArray(r?.data)) raw = r.data;
+      }
+      if (!raw.length) {
+        const r = await fetch('https://api.nasa.gov/planetary/apod?api_key=DEMO_KEY&count=12', { signal: AbortSignal.timeout(8000) });
+        raw = await r.json();
+      }
+    } catch { raw = []; }
+
+    apods = (raw || [])
+      .filter(a => a && a.media_type === 'image' && a.url)
+      .map(a => ({
+        url:    a.url,
+        title:  a.title || 'Astronomy Picture of the Day',
+        date:   a.date || '',
+        credit: a.copyright ? a.copyright.replace(/\s+/g, ' ').trim() : 'NASA · public domain',
+      }));
+    try { if (apods.length) localStorage.setItem(cacheKey, JSON.stringify(apods)); } catch { /* ignore */ }
+    return apods;
+  }
+
+  function applyBg(n) {
+    if (!apods.length) return;
+    const a   = apods[n % apods.length];
+    const bg  = document.getElementById('story-bg');
+    const cr  = document.getElementById('story-credit');
+    if (!bg) return;
+    const img = new Image();
+    img.onload = () => { bg.style.backgroundImage = `url("${a.url}")`; bg.classList.add('show'); };
+    img.src = a.url;
+    if (cr) cr.innerHTML =
+      `<span class="apod-tag">NASA · APOD${a.date ? ' · ' + a.date : ''}</span><br><b>${a.title}</b><br>${a.credit}`;
+  }
+
+  function applyBgToCurrent() { applyBg(current); }
+
   // ─── Story mode engine ──────────────────────────────────────────────────────
 
   let current  = 0;
@@ -931,6 +984,7 @@ const StoryMode = (() => {
     overlay = document.createElement('div');
     overlay.id = 'story-overlay';
     overlay.innerHTML = `
+      <div class="story-bg" id="story-bg"></div>
       <div class="story-header">
         <span class="story-logo">⬡ <span>NASA</span> · ARTEMIS III · MISSION EXPLORER</span>
         <div class="story-progress"><div class="story-progress-fill" id="sp-fill"></div></div>
@@ -940,6 +994,7 @@ const StoryMode = (() => {
         <div class="story-left" id="story-left"></div>
         <div class="story-right"><canvas id="story-canvas"></canvas></div>
       </div>
+      <div class="story-credit" id="story-credit"></div>
       <div class="story-nav">
         <button class="story-nav-btn" id="story-prev">← PREV</button>
         <div class="story-dots" id="story-dots"></div>
@@ -948,6 +1003,7 @@ const StoryMode = (() => {
       </div>
     `;
     document.body.appendChild(overlay);
+    loadApod().then(applyBgToCurrent);
 
     stCanvas = document.getElementById('story-canvas');
     stCtx    = stCanvas.getContext('2d');
@@ -1000,6 +1056,8 @@ const StoryMode = (() => {
   function _renderScene(n) {
     current = n;
     const sc = SCENES[n];
+
+    applyBg(n); // swap in this scene's NASA APOD backdrop
 
     // Left panel
     const leftEl = document.getElementById('story-left');

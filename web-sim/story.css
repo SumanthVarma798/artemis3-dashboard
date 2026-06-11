@@ -20,8 +20,50 @@
 }
 #story-overlay.active { opacity: 1; pointer-events: all; }
 
+/* ── APOD background layer ── */
+.story-bg {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background-size: cover;
+  background-position: center;
+  opacity: 0;
+  transition: opacity 0.9s ease;
+  transform: scale(1.04);
+}
+.story-bg.show { opacity: 1; }
+/* Darken heavily on the narrative (left) side, let the photo breathe on the right */
+.story-bg::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(90deg, rgba(3,7,13,0.95) 0%, rgba(3,7,13,0.9) 40%, rgba(3,7,13,0.55) 100%),
+    radial-gradient(ellipse at 70% 50%, transparent 30%, rgba(3,7,13,0.6) 100%);
+}
+.story-credit {
+  position: absolute;
+  right: 18px;
+  bottom: 70px;
+  z-index: 2;
+  max-width: 320px;
+  text-align: right;
+  font-family: var(--font-label);
+  font-size: 11px;
+  letter-spacing: 0.5px;
+  line-height: 1.5;
+  color: rgba(255,255,255,0.5);
+  pointer-events: none;
+  text-shadow: 0 1px 4px rgba(0,0,0,0.9);
+}
+.story-credit b { color: rgba(255,255,255,0.78); font-weight: 600; }
+.story-credit .apod-tag { color: var(--accent); letter-spacing: 2px; }
+
 /* ── Layout ── */
+.story-header, .story-nav { position: relative; z-index: 2; }
 .story-body-wrap {
+  position: relative;
+  z-index: 1;
   flex: 1;
   display: grid;
   grid-template-columns: 42% 58%;
@@ -42,7 +84,7 @@
 
 .story-right {
   position: relative;
-  background: #000;
+  background: transparent;
   overflow: hidden;
   opacity: 1;
   transition: opacity 0.3s ease;
