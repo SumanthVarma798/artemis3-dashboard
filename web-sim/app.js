@@ -133,6 +133,10 @@ const App = (() => {
     // Start mission timeline (works in free mode)
     Timeline.start(LAUNCH_DATE ? LAUNCH_DATE.getTime() : null);
 
+    // Live SpaceX + Blue Origin launch data (no auth needed; cached + rate-limit safe)
+    Providers.init();
+    setInterval(() => Providers.init(), 60 * 60_000);
+
     // Init auth — non-blocking; dashboard still works before login
     const authReady = await Auth.init();
 
