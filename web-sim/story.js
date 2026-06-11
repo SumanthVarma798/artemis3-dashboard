@@ -1070,5 +1070,9 @@ const StoryMode = (() => {
     }
   }
 
+  // Mount the launch button as soon as the DOM is ready
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', build);
+  else build();
+
   return { open, close };
 })();
