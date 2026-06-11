@@ -91,6 +91,8 @@ const StoryMode = (() => {
         ]},
       },
       draw: drawRocketsScene,
+      model: 'sls',
+      modelLabel: 'SLS Block 1 · Artemis launch vehicle',
     },
 
     // ══ 2: EARTH → MOON ═══════════════════════════════════════════════════════
@@ -151,6 +153,8 @@ const StoryMode = (() => {
         ]},
       },
       draw: drawLandersScene,
+      model: 'starship',
+      modelLabel: 'SpaceX Starship HLS · Artemis III lander',
     },
 
     // ══ 5: LANDING SITE ═══════════════════════════════════════════════════════
@@ -992,7 +996,10 @@ const StoryMode = (() => {
       </div>
       <div class="story-body-wrap">
         <div class="story-left" id="story-left"></div>
-        <div class="story-right"><canvas id="story-canvas"></canvas></div>
+        <div class="story-right">
+          <canvas id="story-canvas"></canvas>
+          <div class="story-model" id="story-model" style="display:none"></div>
+        </div>
       </div>
       <div class="story-credit" id="story-credit"></div>
       <div class="story-nav">
@@ -1004,6 +1011,7 @@ const StoryMode = (() => {
     `;
     document.body.appendChild(overlay);
     loadApod().then(applyBgToCurrent);
+    loadModelManifest().then(() => { if (overlay.classList.contains('active')) _renderScene(current); });
 
     stCanvas = document.getElementById('story-canvas');
     stCtx    = stCanvas.getContext('2d');
@@ -1106,11 +1114,18 @@ const StoryMode = (() => {
     document.getElementById('story-prev').disabled = n === 0;
     document.getElementById('story-next').disabled = n === SCENES.length - 1;
 
-    // Canvas animation
+    // Visual: real 3D model if the scene has one, otherwise the canvas animation
     cancelAnimationFrame(animId);
     startT = null;
-    resizeCanvas();
 
+    if (sc.model && modelManifest && modelManifest.includes(sc.model)) {
+      showSceneModel(sc);
+      return;
+    }
+    hideSceneModel();
+
+    // Canvas animation
+    resizeCanvas();
     function loop(ts) {
       if (!startT) startT = ts;
       const elapsed = ts - startT;
@@ -1119,6 +1134,46 @@ const StoryMode = (() => {
       animId = requestAnimationFrame(loop);
     }
     animId = requestAnimationFrame(loop);
+  }
+
+  // ─── Real 3D models inside the story ────────────────────────────────────────
+
+  let modelManifest = null;
+
+  async function loadModelManifest() {
+    if (modelManifest) return modelManifest;
+    try {
+      const res = await fetch('assets/models/manifest.json', { cache: 'no-cache' });
+      modelManifest = res.ok ? await res.json() : [];
+    } catch { modelManifest = []; }
+    return modelManifest;
+  }
+
+  function showSceneModel(sc) {
+    const wrap = document.getElementById('story-model');
+    const cv   = document.getElementById('story-canvas');
+    if (!wrap) return;
+    if (cv) cv.style.display = 'none';
+    wrap.style.display = 'block';
+    wrap.innerHTML = `
+      <model-viewer
+        src="assets/models/${sc.model}/scene.gltf"
+        alt="${sc.modelLabel || sc.title}"
+        camera-controls auto-rotate rotation-per-second="22deg"
+        interaction-prompt="none"
+        shadow-intensity="1.1" exposure="1.15" environment-image="neutral"
+        loading="eager" reveal="auto"
+        style="width:100%;height:100%;background:transparent;">
+        <div slot="poster" class="story-model-poster">Loading model…</div>
+      </model-viewer>
+      ${sc.modelLabel ? `<div class="story-model-cap">▸ ${sc.modelLabel} · drag to inspect</div>` : ''}`;
+  }
+
+  function hideSceneModel() {
+    const wrap = document.getElementById('story-model');
+    const cv   = document.getElementById('story-canvas');
+    if (wrap) { wrap.style.display = 'none'; wrap.innerHTML = ''; }
+    if (cv)   cv.style.display = 'block';
   }
 
   function resizeCanvas() {
