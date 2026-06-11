@@ -49,6 +49,15 @@ const Orbital3D = (() => {
   let pickables   = [];
   let hoveredRoot = null;
 
+  // ── Playback ────────────────────────────────────────────────────────────────
+  let paused    = false;
+  let simClock  = 0;            // advances only while playing (drives motion)
+  let lastFrame = (typeof performance !== 'undefined' ? performance.now() : Date.now());
+  let skybox    = null;
+
+  // Tycho all-sky star catalog map (NASA-derived), CORS-safe via jsdelivr
+  const STARMAP = 'https://cdn.jsdelivr.net/npm/three-globe@2.45.2/example/img/night-sky.png';
+
   // ── Component metadata (zoom-aware tooltips) ────────────────────────────────
   const INFO = {
     earth: () => ({ title: 'EARTH', tag: 'DEPARTURE', accent: '#3399ff', lines: [
@@ -165,8 +174,9 @@ const Orbital3D = (() => {
     renderer.setClearColor(0x000000, 0);
 
     scene  = new THREE.Scene();
-    camera = new THREE.PerspectiveCamera(42, 1, 0.01, 400);
+    camera = new THREE.PerspectiveCamera(42, 1, 0.01, 2000);
 
+    buildSkybox();
     buildStarfield();
     buildLights();
     buildEarth();
@@ -187,23 +197,38 @@ const Orbital3D = (() => {
     animate();
   }
 
+  // Celestial sphere — the scene sits inside a giant sphere whose inner wall is
+  // lined with an all-sky star map (rendered from the inside via BackSide).
+  function buildSkybox() {
+    const tex = texColor(STARMAP);
+    const mat = new THREE.MeshBasicMaterial({
+      map: tex,
+      side: THREE.BackSide,
+      color: 0xcdd4e6,   // slight tone-down so it reads as a backdrop, not foreground
+      depthWrite: false,
+    });
+    skybox = new THREE.Mesh(new THREE.SphereGeometry(800, 60, 40), mat);
+    scene.add(skybox);
+  }
+
+  // A sparse layer of brighter foreground stars in front of the star map (depth)
   function buildStarfield() {
     const geo = new THREE.BufferGeometry();
     const verts = [], colors = [];
     const palette = [[1,1,1],[0.85,0.92,1],[1,0.96,0.85],[0.95,0.85,1],[0.8,0.9,1]];
-    for (let i = 0; i < 2800; i++) {
-      const r = 120 + Math.random() * 40;
+    for (let i = 0; i < 900; i++) {
+      const r = 120 + Math.random() * 60;
       const t = Math.random() * Math.PI * 2;
       const p = Math.acos(2 * Math.random() - 1);
       verts.push(r*Math.sin(p)*Math.cos(t), r*Math.cos(p), r*Math.sin(p)*Math.sin(t));
       const c = palette[Math.floor(Math.random()*palette.length)];
-      const b = 0.4 + Math.random()*0.6;
+      const b = 0.5 + Math.random()*0.5;
       colors.push(c[0]*b, c[1]*b, c[2]*b);
     }
     geo.setAttribute('position', new THREE.Float32BufferAttribute(verts, 3));
     geo.setAttribute('color',    new THREE.Float32BufferAttribute(colors, 3));
     scene.add(new THREE.Points(geo, new THREE.PointsMaterial({
-      size: 0.13, vertexColors: true, transparent: true, opacity: 0.9, sizeAttenuation: true,
+      size: 0.16, vertexColors: true, transparent: true, opacity: 0.85, sizeAttenuation: true,
     })));
   }
 
@@ -497,6 +522,25 @@ const Orbital3D = (() => {
     hintEl.className = 'orbital-hint';
     hintEl.textContent = 'drag to rotate · scroll to zoom · hover for details';
     panel.appendChild(hintEl);
+
+    // Pause / play toggle — freezes all motion so tooltips are easy to hover
+    const pauseBtn = document.createElement('button');
+    pauseBtn.id = 'orbital-pause';
+    pauseBtn.className = 'orbital-pause';
+    pauseBtn.innerHTML = '<span class="op-icon">❚❚</span><span class="op-label">PAUSE</span>';
+    pauseBtn.title = 'Pause animation — freeze the scene to hover objects';
+    pauseBtn.onclick = togglePause;
+    panel.appendChild(pauseBtn);
+  }
+
+  function togglePause() {
+    paused = !paused;
+    const btn = document.getElementById('orbital-pause');
+    if (btn) {
+      btn.classList.toggle('paused', paused);
+      btn.querySelector('.op-icon').textContent  = paused ? '►' : '❚❚';
+      btn.querySelector('.op-label').textContent = paused ? 'PLAY' : 'PAUSE';
+    }
   }
 
   function setupInteraction() {
@@ -596,14 +640,20 @@ const Orbital3D = (() => {
 
   function animate() {
     animFrame = requestAnimationFrame(animate);
-    const now = Date.now();
+    const real = (typeof performance !== 'undefined' ? performance.now() : Date.now());
+    const dt   = real - lastFrame;
+    lastFrame  = real;
+    if (!paused) simClock += dt;   // motion is driven by simClock, frozen on pause
 
-    // Bodies
-    moonAngle += 0.0008;
+    // Bodies (orbital + spin advance only while playing)
+    if (!paused) {
+      moonAngle += 0.0008;
+      moonMesh.rotation.y += 0.001;
+      earthMesh.rotation.y += 0.0025;
+      earthAtmo.rotation.y -= 0.0008;
+      if (skybox) skybox.rotation.y += 0.00002;
+    }
     moonMesh.position.set(Math.cos(moonAngle) * ORBIT_R, 0, Math.sin(moonAngle) * ORBIT_R);
-    moonMesh.rotation.y += 0.001;
-    earthMesh.rotation.y += 0.0025;
-    earthAtmo.rotation.y -= 0.0008;
     nrhoGroup.position.copy(moonMesh.position);
 
     buildTrajectoryArc();
@@ -617,7 +667,7 @@ const Orbital3D = (() => {
     orionMesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), tangent);
 
     // Starship — rides the NRHO halo, nose pointing radially out from the Moon
-    const shipPhase = now * 0.00018;
+    const shipPhase = simClock * 0.00018;
     const shipLocal = nrhoLocal(shipPhase);
     const shipPos   = moonMesh.position.clone().add(shipLocal);
     starshipMesh.position.copy(shipPos);
@@ -631,9 +681,11 @@ const Orbital3D = (() => {
       g.scale.setScalar(s);
     });
 
-    // Trail
-    trailPositions.push(opPos.clone());
-    if (trailPositions.length > TRAIL_LEN) trailPositions.shift();
+    // Trail (frozen while paused)
+    if (!paused) {
+      trailPositions.push(opPos.clone());
+      if (trailPositions.length > TRAIL_LEN) trailPositions.shift();
+    }
     const posBuf = orionTrail.geometry.attributes.position;
     const clrBuf = orionTrail.geometry.attributes.color;
     const len = trailPositions.length;
@@ -649,7 +701,7 @@ const Orbital3D = (() => {
     const desired = cam.followId ? objectPosition(cam.followId) : DEFAULT_CENTER;
     cam.target.lerp(desired, 0.06);
     cam.radius += (cam.targetRadius - cam.radius) * 0.10;
-    if (!cam.dragging && (now - cam.lastIdle) > 4000) cam.theta += 0.0008;
+    if (!cam.dragging && !paused && (Date.now() - cam.lastIdle) > 4000) cam.theta += 0.0008;
 
     camera.position.set(
       cam.target.x + cam.radius * Math.sin(cam.phi) * Math.cos(cam.theta),
@@ -667,7 +719,9 @@ const Orbital3D = (() => {
 
   function updateHint() {
     if (!hintEl) return;
-    if (cam.followId) {
+    if (paused) {
+      hintEl.textContent = 'PAUSED · scene frozen — hover any object freely · drag & zoom still work';
+    } else if (cam.followId) {
       const name = { earth: 'EARTH', moon: 'MOON', orion: 'ORION', starship: 'STARSHIP HLS' }[cam.followId];
       hintEl.textContent = `following ${name} · click empty space to release`;
     } else if (cam.radius < NEAR_THRESH) {
