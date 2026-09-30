@@ -61,7 +61,7 @@ const Orbital3D = (() => {
       'Orion passed 6,545 km above the far side',
       'The crew saw Earthset from behind the Moon',
       'No landing on this mission. That comes on Artemis IV, planned for 2028' ]}),
-    orion: () => ({ title: 'Orion', tag: 'Crew vehicle', accent: '#e8895a', lines: [
+    orion: () => ({ title: 'Orion', tag: 'Crew vehicle', accent: '#e8605a', lines: [
       mode === 'a3' ? 'Carries four astronauts on Artemis III' : 'Named Integrity by the Artemis II crew',
       'Lockheed Martin capsule, ESA and Airbus service module',
       'Zoom in for parts' ]}),
@@ -270,7 +270,7 @@ const Orbital3D = (() => {
     leoGroup.rotation.x = LEO_INCL;
     leoRing = new THREE.Mesh(
       new THREE.TorusGeometry(LEO_R, 0.005, 8, 200).rotateX(Math.PI / 2),
-      new THREE.MeshBasicMaterial({ color: 0xe8895a, transparent: true, opacity: 0.55 })
+      new THREE.MeshBasicMaterial({ color: 0xe8605a, transparent: true, opacity: 0.55 })
     );
     leoGroup.add(leoRing);
     scene.add(leoGroup);
@@ -304,7 +304,7 @@ const Orbital3D = (() => {
       g.add(mark(wing, 'orion-solar'));
     }
 
-    const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: makeGlowSprite(0xe8895a), transparent: true, opacity: 0.45, depthWrite: false, blending: THREE.AdditiveBlending }));
+    const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: makeGlowSprite(0xe8605a), transparent: true, opacity: 0.45, depthWrite: false, blending: THREE.AdditiveBlending }));
     glow.scale.set(0.42, 0.42, 1);
     g.add(glow);
 
@@ -407,7 +407,7 @@ const Orbital3D = (() => {
     outNorms = Array.from({ length: 201 }, (_, i) => replayCurve.getPointAt(i / 400).length() / replayMaxNorm);
     replayLine = new THREE.Line(
       new THREE.BufferGeometry().setFromPoints(samples),
-      new THREE.LineDashedMaterial({ color: 0xe8895a, dashSize: 0.14, gapSize: 0.1, transparent: true, opacity: 0.75 })
+      new THREE.LineDashedMaterial({ color: 0xe8605a, dashSize: 0.14, gapSize: 0.1, transparent: true, opacity: 0.75 })
     );
     replayLine.computeLineDistances();
     scene.add(replayLine);
@@ -422,8 +422,8 @@ const Orbital3D = (() => {
 
   // ── Mode handling ──────────────────────────────────────────────────────────
   const LEGEND = {
-    a3: [['#7fb0e8', 'Earth'], ['#e8895a', 'Orion'], ['#8fb6dc', 'Blue Origin test vehicle'], ['#cfd6dc', 'Starship test article']],
-    a2: [['#7fb0e8', 'Earth'], ['#cdbf9f', 'Moon'], ['#e8895a', 'Orion and flight path']],
+    a3: [['#7fb0e8', 'Earth'], ['#e8605a', 'Orion'], ['#8fb6dc', 'Blue Origin test vehicle'], ['#cfd6dc', 'Starship test article']],
+    a2: [['#7fb0e8', 'Earth'], ['#cdbf9f', 'Moon'], ['#e8605a', 'Orion and flight path']],
   };
   const TELEM_LABELS = {
     a3: ['Altitude', 'Inclination', 'Docked to', 'Sequence'],
@@ -588,7 +588,7 @@ const Orbital3D = (() => {
 
     if (!paused) { trail.push(pos.clone()); if (trail.length > TRAIL_LEN) trail.shift(); }
     const posBuf = orionTrail.geometry.attributes.position, clrBuf = orionTrail.geometry.attributes.color;
-    trail.forEach((p, i) => { const f = i / trail.length; posBuf.setXYZ(i, p.x, p.y, p.z); clrBuf.setXYZ(i, 0.3 + f * 0.65, 0.2 + f * 0.35, 0.1 + f * 0.2); });
+    trail.forEach((p, i) => { const f = i / trail.length; posBuf.setXYZ(i, p.x, p.y, p.z); clrBuf.setXYZ(i, 0.42 + f * 0.55, 0.14 + f * 0.2, 0.13 + f * 0.17); });
     posBuf.needsUpdate = true; clrBuf.needsUpdate = true; orionTrail.geometry.setDrawRange(0, trail.length);
 
     let text = REPLAY_STEPS[0][1];

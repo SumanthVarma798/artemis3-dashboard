@@ -9,7 +9,8 @@ const StoryMode = (() => {
   const reduce = window.matchMedia('(prefers-reduced-motion: reduce)');
   const MONO = "'Geist Mono', ui-monospace, Menlo, monospace";
   const SANS = "'Geist', ui-sans-serif, system-ui, sans-serif";
-  const COPPER = '232,137,90';     // the one accent, as an rgb triplet for canvas alpha work
+  const RED  = '232,96,90';       // Artemis: next mission, Orion, the pole
+  const BLUE = '93,148,240';      // completed steps and communication links
   const WARM   = '214,200,172';    // Apollo-era neutral
   const COOL   = '170,186,210';    // everything else
 
@@ -132,11 +133,11 @@ const StoryMode = (() => {
       const a = ease((t - 1500 - i * 260) / 500); if (a <= 0) return;
       const x = fx(yr), dy = lvl * 30;
       ctx.beginPath(); ctx.arc(x, cy, st === 'done' ? 5.5 : 5, 0, Math.PI * 2);
-      if (st === 'done') { ctx.fillStyle = `rgba(${COPPER},${a})`; ctx.fill(); }
-      else { ctx.fillStyle = `rgba(10,12,16,${a})`; ctx.fill(); ctx.strokeStyle = `rgba(${st === 'next' ? COPPER : COOL},${a})`; ctx.lineWidth = 1.5; ctx.stroke(); }
-      if (st === 'next') { const pr = (t / 1800) % 1; ctx.beginPath(); ctx.arc(x, cy, 5 + pr * 12, 0, Math.PI * 2); ctx.strokeStyle = `rgba(${COPPER},${0.6 * (1 - pr) * a})`; ctx.lineWidth = 1; ctx.stroke(); }
+      if (st === 'done') { ctx.fillStyle = `rgba(${BLUE},${a})`; ctx.fill(); }
+      else { ctx.fillStyle = `rgba(10,12,16,${a})`; ctx.fill(); ctx.strokeStyle = `rgba(${st === 'next' ? RED : COOL},${a})`; ctx.lineWidth = 1.5; ctx.stroke(); }
+      if (st === 'next') { const pr = (t / 1800) % 1; ctx.beginPath(); ctx.arc(x, cy, 5 + pr * 12, 0, Math.PI * 2); ctx.strokeStyle = `rgba(${RED},${0.6 * (1 - pr) * a})`; ctx.lineWidth = 1; ctx.stroke(); }
       ctx.strokeStyle = `rgba(255,255,255,${0.12 * a})`; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(x, cy + Math.sign(dy) * 8); ctx.lineTo(x, cy + dy - Math.sign(dy) * 13); ctx.stroke();
-      const col = st === 'plan' ? `rgba(${COOL},${a * 0.95})` : `rgba(${COPPER},${a})`;
+      const col = st === 'plan' ? `rgba(${COOL},${a * 0.95})` : st === 'done' ? `rgba(${BLUE},${a})` : `rgba(${RED},${a})`;
       text(ctx, 'A' + n, x, cy + dy, { size: 11, color: col, align: 'center', weight: 600 });
       text(ctx, sub, x, cy + dy + (dy < 0 ? -13 : 13), { size: 9.5, color: `rgba(255,255,255,${a * 0.6})`, align: 'center' });
     });
@@ -159,7 +160,7 @@ const StoryMode = (() => {
     const ret = s => bez(P3, [W * 0.66, H * 0.88], [W * 0.3, H * 0.94], P5, s);
 
     earth(ctx, ex, ey, er); moon(ctx, mx, my, mr);
-    ctx.save(); ctx.setLineDash([3, 6]); ctx.strokeStyle = `rgba(${COPPER},0.3)`; ctx.lineWidth = 1;
+    ctx.save(); ctx.setLineDash([3, 6]); ctx.strokeStyle = `rgba(${RED},0.3)`; ctx.lineWidth = 1;
     ctx.beginPath(); for (let i = 0; i <= 60; i++) { const [x, y] = out(i / 60); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }
     for (let i = 0; i <= 60; i++) { const [x, y] = ret(i / 60); ctx.lineTo(x, y); } ctx.stroke(); ctx.restore();
 
@@ -175,12 +176,12 @@ const StoryMode = (() => {
     const steps = 140;
     for (let i = 0; i < steps; i++) {
       const s0 = u * i / steps, s1 = u * (i + 1) / steps, [a, b] = pt(s0), [c, d] = pt(s1);
-      ctx.beginPath(); ctx.moveTo(a, b); ctx.lineTo(c, d); ctx.strokeStyle = `rgba(${COPPER},${0.15 + (i / steps) * 0.75})`; ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(a, b); ctx.lineTo(c, d); ctx.strokeStyle = `rgba(${RED},${0.15 + (i / steps) * 0.75})`; ctx.stroke();
     }
     const [ox, oy] = pt(u);
-    const gl = ctx.createRadialGradient(ox, oy, 0, ox, oy, 14); gl.addColorStop(0, `rgba(${COPPER},0.7)`); gl.addColorStop(1, 'transparent');
+    const gl = ctx.createRadialGradient(ox, oy, 0, ox, oy, 14); gl.addColorStop(0, `rgba(${RED},0.7)`); gl.addColorStop(1, 'transparent');
     ctx.beginPath(); ctx.arc(ox, oy, 14, 0, Math.PI * 2); ctx.fillStyle = gl; ctx.fill();
-    ctx.beginPath(); ctx.arc(ox, oy, 3.8, 0, Math.PI * 2); ctx.fillStyle = `rgb(${COPPER})`; ctx.fill();
+    ctx.beginPath(); ctx.arc(ox, oy, 3.8, 0, Math.PI * 2); ctx.fillStyle = `rgb(${RED})`; ctx.fill();
 
     const day = loop * (9 + 1.5 / 24);
     text(ctx, 'EARTH', ex, ey + er + 22, { size: 10, align: 'center', color: 'rgba(130,180,255,0.75)' });
@@ -198,7 +199,7 @@ const StoryMode = (() => {
     const SEQ = 48, ts = (t / 1000) % SEQ;
     const cx = W * 0.5, cy = H * 1.6, Re = H * 0.98, Ro = Re * 1.12;
     earth(ctx, cx, cy, Re);
-    ctx.strokeStyle = `rgba(${COPPER},0.5)`; ctx.lineWidth = 1.2; ctx.beginPath(); ctx.arc(cx, cy, Ro, Math.PI * 1.06, Math.PI * 1.94); ctx.stroke();
+    ctx.strokeStyle = `rgba(${RED},0.5)`; ctx.lineWidth = 1.2; ctx.beginPath(); ctx.arc(cx, cy, Ro, Math.PI * 1.06, Math.PI * 1.94); ctx.stroke();
 
     const at = (xf, rOff = 0) => { // x fraction of width -> point on orbit plus tangent angle
       const a = -Math.PI / 2 + (xf * W - cx) / Ro, r = Ro + rOff;
@@ -219,12 +220,12 @@ const StoryMode = (() => {
     const lab = (str, x, y, a, col) => a > 0.05 && text(ctx, str, x, y, { size: 10, align: 'center', color: `rgba(${col},${a * 0.9})` });
     lab('BLUE ORIGIN TEST ARTICLE', bx, by - 26 * u - 30, bA, COOL);
     lab('STARSHIP TEST ARTICLE', sx, sy - 26 * u - 18, sA, COOL);
-    lab('ORION', ox, oy - 26 * u - 6, oA, COPPER);
+    lab('ORION', ox, oy - 26 * u - 6, oA, RED);
 
     const docked = (a, b) => Math.abs(a - b) < 0.012 && oA > 0.9;
     const flash = docked(orionX, bX + dB) || docked(orionX, sX + dS);
     if (flash) { const pr = (t / 900) % 1, fx = docked(orionX, bX + dB) ? (bx + ox) / 2 : (sx + ox) / 2, fy = (docked(orionX, bX + dB) ? by : sy) - 14;
-      ctx.beginPath(); ctx.arc(fx, fy, 6 + pr * 16, 0, Math.PI * 2); ctx.strokeStyle = `rgba(${COPPER},${0.7 * (1 - pr)})`; ctx.lineWidth = 1.2; ctx.stroke(); }
+      ctx.beginPath(); ctx.arc(fx, fy, 6 + pr * 16, 0, Math.PI * 2); ctx.strokeStyle = `rgba(${RED},${0.7 * (1 - pr)})`; ctx.lineWidth = 1.2; ctx.stroke(); }
 
     const steps = [[0, 'A Blue Origin lander test vehicle launches first.'], [6, 'SLS lifts four crew in Orion into the same orbit.'], [13, 'Orion closes in, then docks for about 2 days.'],
       [22, 'A Starship test article launches. It has a docking port, no crew cabin.'], [26, 'Orion undocks and flies to Starship for about 1 day.'], [43, 'Deorbit, entry, splashdown about two weeks after launch.']];
@@ -243,7 +244,7 @@ const StoryMode = (() => {
     ctx.fillStyle = `rgba(${WARM},0.85)`; ctx.fillRect(svx - 15, ground - svh, 30, svh);
     ctx.fillStyle = 'rgba(0,0,0,0.55)'; [0.28, 0.52, 0.74].forEach(f => ctx.fillRect(svx - 15, ground - svh * f - 4, 30, 8));
     ctx.fillStyle = 'rgba(232,236,240,0.92)'; ctx.fillRect(slx - 14, ground - slh, 28, slh);
-    ctx.fillStyle = `rgba(${COPPER},0.85)`; ctx.fillRect(slx - 14, ground - slh * 0.62, 28, slh * 0.5);
+    ctx.fillStyle = `rgba(${RED},0.85)`; ctx.fillRect(slx - 14, ground - slh * 0.62, 28, slh * 0.5);
     ctx.fillStyle = 'rgba(232,236,240,0.92)'; [-22, 22].forEach(dx => ctx.fillRect(slx + dx - 4, ground - slh * 0.5, 8, slh * 0.5));
     if (prog > 0.8) {
       text(ctx, '111 m', svx, ground - svh - 14, { size: 13, align: 'center', color: `rgba(${WARM},1)`, weight: 500 });
@@ -297,11 +298,11 @@ const StoryMode = (() => {
 
     const shx = cx + 0.03 * r, shy = cy - 0.9 * r, shr = 0.1 * r, pulse = 0.65 + 0.35 * Math.sin(t / 650);
     ctx.beginPath(); ctx.arc(shx, shy, shr, 0, Math.PI * 2); ctx.fillStyle = 'rgba(12,7,4,0.9)'; ctx.fill();
-    ctx.strokeStyle = `rgba(${COPPER},${pulse})`; ctx.lineWidth = 2; ctx.stroke();
-    ctx.beginPath(); ctx.arc(shx, shy, shr + 7, 0, Math.PI * 2); ctx.strokeStyle = `rgba(${COPPER},${pulse * 0.3})`; ctx.lineWidth = 1.2; ctx.stroke();
+    ctx.strokeStyle = `rgba(${RED},${pulse})`; ctx.lineWidth = 2; ctx.stroke();
+    ctx.beginPath(); ctx.arc(shx, shy, shr + 7, 0, Math.PI * 2); ctx.strokeStyle = `rgba(${RED},${pulse * 0.3})`; ctx.lineWidth = 1.2; ctx.stroke();
 
-    text(ctx, 'SHACKLETON CRATER', shx + shr + 14, shy - 2, { size: 10.5, color: `rgba(${COPPER},0.95)`, weight: 500 });
-    text(ctx, '21 km wide, 4.2 km deep', shx + shr + 14, shy + 13, { size: 9.5, color: `rgba(${COPPER},0.7)` });
+    text(ctx, 'SHACKLETON CRATER', shx + shr + 14, shy - 2, { size: 10.5, color: `rgba(${RED},0.95)`, weight: 500 });
+    text(ctx, 'About 20 km wide, 4 km deep', shx + shr + 14, shy + 13, { size: 9.5, color: `rgba(${RED},0.7)` });
     text(ctx, 'Permanently shadowed regions', cx - r * 0.35, cy - r * 0.55, { size: 9.5, align: 'center', color: 'rgba(200,185,170,0.6)' });
     text(ctx, 'Apollo sites (equatorial)', cx, cy + r * 0.62, { size: 9.5, align: 'center', color: `rgba(${WARM},${a * 0.6})` });
     text(ctx, 'SOUTH POLE', cx, cy - r - 12, { size: 10, align: 'center', color: 'rgba(255,255,255,0.4)' });
@@ -317,7 +318,7 @@ const StoryMode = (() => {
     const p = ease(t / 2200);
     ctx.lineWidth = 1; ctx.strokeStyle = 'rgba(255,255,255,0.14)'; ctx.beginPath();
     for (let i = 0; i <= 80; i++) { const f = i / 80 * 4, x = lerp(x0, x1, f / 4), y = cy + Math.sin(f * 1.1) * H * 0.07; i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); } ctx.stroke();
-    ctx.strokeStyle = `rgb(${COPPER})`; ctx.lineWidth = 2; ctx.beginPath();
+    ctx.strokeStyle = `rgb(${BLUE})`; ctx.lineWidth = 2; ctx.beginPath();
     for (let i = 0; i <= 40; i++) { const f = i / 40 * 2; if (f / 4 > p) break; const x = lerp(x0, x1, f / 4), y = cy + Math.sin(f * 1.1) * H * 0.07; i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); } ctx.stroke();
 
     // Cancelled Gateway station, shown as a struck-through ghost between IV and V
@@ -331,9 +332,9 @@ const StoryMode = (() => {
       const a = ease((t - 400 - i * 300) / 500); if (a <= 0) return;
       const x = px(i), y = py(i);
       ctx.beginPath(); ctx.arc(x, y, 11, 0, Math.PI * 2);
-      if (st === 'done') { ctx.fillStyle = `rgba(${COPPER},${a})`; ctx.fill(); } else { ctx.fillStyle = `rgba(10,12,16,${a})`; ctx.fill(); ctx.lineWidth = 1.5; ctx.strokeStyle = `rgba(${st === 'next' ? COPPER : COOL},${a})`; ctx.stroke(); }
-      if (st === 'next') { const pr = (t / 1900) % 1; ctx.beginPath(); ctx.arc(x, y, 11 + pr * 16, 0, Math.PI * 2); ctx.strokeStyle = `rgba(${COPPER},${0.55 * (1 - pr) * a})`; ctx.lineWidth = 1; ctx.stroke(); }
-      text(ctx, n, x, y + 4, { size: 11, align: 'center', weight: 600, color: st === 'done' ? `rgba(26,13,6,${a})` : `rgba(${st === 'next' ? COPPER : COOL},${a})` });
+      if (st === 'done') { ctx.fillStyle = `rgba(${BLUE},${a})`; ctx.fill(); } else { ctx.fillStyle = `rgba(10,12,16,${a})`; ctx.fill(); ctx.lineWidth = 1.5; ctx.strokeStyle = `rgba(${st === 'next' ? RED : COOL},${a})`; ctx.stroke(); }
+      if (st === 'next') { const pr = (t / 1900) % 1; ctx.beginPath(); ctx.arc(x, y, 11 + pr * 16, 0, Math.PI * 2); ctx.strokeStyle = `rgba(${RED},${0.55 * (1 - pr) * a})`; ctx.lineWidth = 1; ctx.stroke(); }
+      text(ctx, n, x, y + 4, { size: 11, align: 'center', weight: 600, color: st === 'done' ? `rgba(6,20,43,${a})` : `rgba(${st === 'next' ? RED : COOL},${a})` });
       text(ctx, when, x, y + 34, { size: 10.5, align: 'center', color: `rgba(255,255,255,${a * 0.85})` });
       what.forEach((ln, k) => text(ctx, ln, x, y + 49 + k * 12, { size: 9.5, align: 'center', color: `rgba(255,255,255,${a * 0.5})` }));
     });
@@ -359,17 +360,183 @@ const StoryMode = (() => {
       const x = ex + rr * Math.cos(a), y = ey + rr * Math.sin(a), sees = Math.cos(a) > 0.05;
       if (sees) {
         visible++;
-        ctx.save(); ctx.setLineDash([3, 6]); ctx.strokeStyle = `rgba(${COPPER},0.35)`; ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(mx, my); ctx.stroke(); ctx.restore();
+        ctx.save(); ctx.setLineDash([3, 6]); ctx.strokeStyle = `rgba(${BLUE},0.35)`; ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(mx, my); ctx.stroke(); ctx.restore();
         const pr = ((t / 1400) + i * 0.33) % 1;
-        ctx.beginPath(); ctx.arc(lerp(x, mx, pr), lerp(y, my, pr), 2.6, 0, Math.PI * 2); ctx.fillStyle = `rgba(${COPPER},${0.9 - pr * 0.6})`; ctx.fill();
+        ctx.beginPath(); ctx.arc(lerp(x, mx, pr), lerp(y, my, pr), 2.6, 0, Math.PI * 2); ctx.fillStyle = `rgba(${BLUE},${0.9 - pr * 0.6})`; ctx.fill();
       }
-      ctx.beginPath(); ctx.arc(x, y, 5, 0, Math.PI * 2); ctx.fillStyle = sees ? `rgb(${COPPER})` : 'rgba(255,255,255,0.45)'; ctx.fill();
+      ctx.beginPath(); ctx.arc(x, y, 5, 0, Math.PI * 2); ctx.fillStyle = sees ? `rgb(${BLUE})` : 'rgba(255,255,255,0.45)'; ctx.fill();
       const out = Math.cos(a) >= 0 ? 1 : -1;
-      text(ctx, name, x + 12 * Math.sign(Math.cos(a) || 1), y + 4, { size: 9.5, align: Math.cos(a) >= 0 ? 'left' : 'right', color: sees ? `rgba(${COPPER},0.95)` : 'rgba(255,255,255,0.45)' });
+      text(ctx, name, x + 12 * Math.sign(Math.cos(a) || 1), y + 4, { size: 9.5, align: Math.cos(a) >= 0 ? 'left' : 'right', color: sees ? `rgba(${BLUE},0.95)` : 'rgba(255,255,255,0.45)' });
     });
     text(ctx, `${visible} of 3 complexes can see the Moon right now`, W * 0.5, H * 0.92, { size: 11.5, align: 'center', color: 'rgba(255,255,255,0.7)', font: SANS });
     text(ctx, 'Schematic view from above the pole', W * 0.5, H * 0.92 + 18, { size: 9.5, align: 'center', color: 'rgba(255,255,255,0.35)' });
   }
+
+
+  // ── Real Moon globe: LRO imagery on a sphere, with the south pole drawn on top ───────────────────
+  // Base map: LRO WAC global mosaic (NASA/GSFC/ASU), tiles from NASA Moon Trek, stitched to 3072 px.
+  // Pole: LROC WAC south pole mosaic (PIA13523), polar stereographic, 600 km across, fitted over the
+  // pole with its own UVs so every label sits at its true latitude and longitude (within a few km).
+  const Globe = (() => {
+    const R_KM = 1737.4, CAP_KM = 300;
+    const d2r = Math.PI / 180;
+    // [name, lat, lon, kind, note]. kind: hero (Shackleton), cand (in NASA's 2022 candidate regions), ref (reference)
+    const PLACES = [
+      ['Shackleton',  -89.9,    0,    'hero', 'Sunlit rim, permanently dark floor', 'b'],
+      ['de Gerlache', -88.5,  -87.1,  'cand', 'Candidate landing region', 'l'],
+      ['Haworth',     -86.9,   -4.0,  'cand', 'Candidate landing region', 'r'],
+      ['Faustini',    -87.3,   77.0,  'cand', 'Candidate landing region', 'b'],
+      ['Malapert',    -84.9,   12.9,  'cand', 'Candidate landing region (massif)', 'r'],
+      ['Nobile',      -85.28,  53.27, 'cand', 'Candidate landing region', 'r'],
+      ['Amundsen',    -84.5,   82.8,  'cand', 'Candidate landing region', 'l'],
+      ['Shoemaker',   -88.1,   44.9,  'ref',  'Deep, permanently shadowed crater', 'r'],
+      ['Cabeus',      -84.9,  -35.5,  'ref',  'LCROSS found water here in 2009', 'l'],
+    ];
+    let renderer, scene, camera, host, labelsLayer, raf = 0, built = false, failed = false;
+    const view = { a: 0.06, b: 0, r: 1.4, ta: 0.06, tb: 0, tr: 1.4 };  // tilt from the pole, azimuth, distance (and their targets)
+    let introStart = 0, userTouched = false;
+    const labelEls = [];
+
+    // East is -Z and longitude 0 faces +X, which is how THREE.SphereGeometry lays out an equirectangular map
+    const at = (lat, lon, r = 1) => new THREE.Vector3(r * Math.cos(lat * d2r) * Math.cos(lon * d2r), r * Math.sin(lat * d2r), -r * Math.cos(lat * d2r) * Math.sin(lon * d2r));
+
+    function capGeometry() {
+      const N = 48, M = 160, capA = 2 * Math.atan(CAP_KM / (2 * R_KM));
+      const pos = [], uv = [], idx = [];
+      for (let i = 0; i <= N; i++) {
+        const c = capA * i / N, rho = 2 * R_KM * Math.tan(c / 2);
+        for (let j = 0; j <= M; j++) {
+          const lon = 2 * Math.PI * j / M, v = at(-90 + c / d2r, lon / d2r, 1.0015);
+          pos.push(v.x, v.y, v.z);
+          uv.push(0.5 + rho * Math.sin(lon) / (2 * CAP_KM), 0.5 + rho * Math.cos(lon) / (2 * CAP_KM));
+        }
+      }
+      for (let i = 0; i < N; i++) for (let j = 0; j < M; j++) {
+        const a = i * (M + 1) + j, b = a + 1, c = a + M + 1, d = c + 1;
+        idx.push(a, c, b, b, c, d);
+      }
+      const g = new THREE.BufferGeometry();
+      g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+      g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+      g.setIndex(idx); g.computeVertexNormals();
+      // computeVertexNormals on a patch is fine, but use the exact sphere normals so lighting matches the globe
+      const n = g.attributes.position.clone().normalize ? null : null;
+      const nrm = []; for (let i = 0; i < pos.length; i += 3) { const l = Math.hypot(pos[i], pos[i + 1], pos[i + 2]); nrm.push(pos[i] / l, pos[i + 1] / l, pos[i + 2] / l); }
+      g.setAttribute('normal', new THREE.Float32BufferAttribute(nrm, 3));
+      return g;
+    }
+
+    function fadeTexture() { // opaque in the middle, transparent at the mosaic's edge, so the cap melts into the globe
+      const c = document.createElement('canvas'); c.width = c.height = 256;
+      const x = c.getContext('2d'), g = x.createRadialGradient(128, 128, 0, 128, 128, 128);
+      g.addColorStop(0, '#fff'); g.addColorStop(0.78, '#fff'); g.addColorStop(0.97, '#000'); g.addColorStop(1, '#000');
+      x.fillStyle = g; x.fillRect(0, 0, 256, 256);
+      return new THREE.CanvasTexture(c);
+    }
+
+    function build() {
+      built = true;
+      try {
+        renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+      } catch (e) { failed = true; return; }
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+      renderer.setClearColor(0x000000, 0);
+      host.appendChild(renderer.domElement);
+      renderer.domElement.className = 'globe-canvas';
+      renderer.domElement.setAttribute('aria-label', 'Interactive 3D Moon centered on the south pole. Drag to tilt, scroll to zoom.');
+
+      scene = new THREE.Scene();
+      camera = new THREE.PerspectiveCamera(35, 1, 0.05, 50);
+      scene.add(camera);
+      scene.add(new THREE.AmbientLight(0xffffff, 0.8));
+      const head = new THREE.DirectionalLight(0xffffff, 0.6); head.position.set(0.35, 0.55, 1); camera.add(head); // headlight: the visible face is always lit
+
+      const L = new THREE.TextureLoader(), maxA = renderer.capabilities.getMaxAnisotropy();
+      const tex = (url, color = true) => { const t = L.load(url); if (color) t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = maxA; return t; };
+      const base = tex('assets/textures/moon_wac_3k.jpg'), pole = tex('assets/textures/moon_south_pole_600km.jpg');
+
+      const moon = new THREE.Mesh(new THREE.SphereGeometry(1, 128, 96),
+        new THREE.MeshLambertMaterial({ map: base }));
+      scene.add(moon);
+      const cap = new THREE.Mesh(capGeometry(),
+        new THREE.MeshLambertMaterial({ map: pole, alphaMap: fadeTexture(), transparent: true, depthWrite: false, side: THREE.DoubleSide }));
+      cap.renderOrder = 1;
+      scene.add(cap);
+
+      labelsLayer = document.createElement('div'); labelsLayer.className = 'globe-labels'; host.appendChild(labelsLayer);
+      PLACES.forEach(([name, lat, lon, kind, note, side]) => {
+        const el = document.createElement('div');
+        el.className = `globe-label ${kind} side-${side}`; el.innerHTML = `<span>${name}</span>`; el.title = `${name}: ${note}`;
+        labelsLayer.appendChild(el); labelEls.push({ el, v: at(lat, lon, 1.004) });
+      });
+
+      const reset = document.createElement('button');
+      reset.type = 'button'; reset.className = 'globe-reset'; reset.innerHTML = '<i class="ph ph-crosshair" aria-hidden="true"></i>South pole';
+      reset.onclick = () => { userTouched = true; Object.assign(view, { ta: 0.06, tb: 0, tr: 1.4 }); };
+      host.appendChild(reset);
+
+      const dom = renderer.domElement; let lx = 0, ly = 0, drag = false;
+      dom.addEventListener('pointerdown', e => { drag = true; userTouched = true; lx = e.clientX; ly = e.clientY; dom.setPointerCapture(e.pointerId); });
+      dom.addEventListener('pointermove', e => {
+        if (!drag) return;
+        view.tb -= (e.clientX - lx) * 0.006; view.ta = Math.max(0, Math.min(1.5, view.ta + (e.clientY - ly) * 0.006));
+        view.b = view.tb; view.a = view.ta; lx = e.clientX; ly = e.clientY;
+      });
+      const end = e => { drag = false; try { dom.releasePointerCapture(e.pointerId); } catch {} };
+      dom.addEventListener('pointerup', end); dom.addEventListener('pointercancel', end);
+      dom.addEventListener('wheel', e => { e.preventDefault(); userTouched = true; view.tr = Math.max(1.12, Math.min(4.6, view.tr * (1 + Math.sign(e.deltaY) * 0.09))); }, { passive: false });
+      dom.style.cursor = 'grab';
+
+      if (window.ResizeObserver) new ResizeObserver(resize).observe(host);
+    }
+
+    function resize() {
+      if (!renderer) return;
+      const w = Math.max(host.clientWidth, 2), h = Math.max(host.clientHeight, 2);
+      renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix();
+    }
+
+    function frame(now) {
+      raf = requestAnimationFrame(frame);
+      if (!userTouched && !reduce.matches) { // fly in from the whole Moon to the pole
+        const t = ease((now - introStart) / 4200);
+        view.a = lerp(1.15, view.ta, t); view.b = lerp(0.9, view.tb, t); view.r = lerp(4.4, view.tr, t);
+      } else {                          // ease toward wherever the user asked to be
+        view.a += (view.ta - view.a) * 0.12; view.b += (view.tb - view.b) * 0.12; view.r += (view.tr - view.r) * 0.12;
+      }
+      const a = view.a, b = view.b, r = view.r;
+      camera.position.set(r * Math.sin(a) * Math.cos(b), -r * Math.cos(a), -r * Math.sin(a) * Math.sin(b));
+      camera.up.set(Math.cos(b), 0, -Math.sin(b));
+      camera.lookAt(0, 0, 0);
+      renderer.render(scene, camera);
+
+      // Labels follow the surface; hide the ones on the far side, and all of them when zoomed far out
+      const w = host.clientWidth, h = host.clientHeight, show = r < 1.9, cn = camera.position.clone().normalize(), horizon = 1 / r + 0.04;
+      labelEls.forEach(({ el, v }) => {
+        const vis = show && v.clone().normalize().dot(cn) > horizon;
+        const p = v.clone().project(camera);
+        const x = (p.x * 0.5 + 0.5) * w, y = (-p.y * 0.5 + 0.5) * h;
+        const on = vis && p.x > -1 && p.x < 1 && p.y > -1 && p.y < 1;
+        el.style.opacity = on ? '1' : '0';
+        el.style.transform = `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px)`;
+      });
+    }
+
+    function show(container) {
+      host = container;
+      if (!built) build();
+      if (failed) return false;
+      host.style.display = 'block';
+      resize();
+      userTouched = false; introStart = performance.now();
+      Object.assign(view, { a: 1.15, b: 0.9, r: 4.4, ta: 0.06, tb: 0, tr: 1.4 });
+      if (reduce.matches) { Object.assign(view, { a: 0.06, b: 0, r: 1.4 }); userTouched = true; }
+      cancelAnimationFrame(raf); raf = requestAnimationFrame(frame);
+      return true;
+    }
+    function hide() { cancelAnimationFrame(raf); raf = 0; if (host) host.style.display = 'none'; }
+    return { show, hide };
+  })();
 
   // ── Scenes ─────────────────────────────────────────────────────────────────
   const SCENES = [
@@ -429,7 +596,7 @@ const StoryMode = (() => {
       ],
       compare: {
         left:  { label: 'Saturn V', tone: 'warm', rows: [['Height', '111 m'], ['Liftoff thrust', '35 MN'], ['To the Moon', '48.6 t'], ['Crew', '3'], ['Flights', '13'], ['First flight', '1967']] },
-        right: { label: 'SLS Block 1', tone: 'accent', rows: [['Height', '98 m'], ['Liftoff thrust', '39 MN'], ['To the Moon', '27 t'], ['Crew', '4'], ['Flights', '2'], ['First flight', '2022']] },
+        right: { label: 'SLS Block 1', tone: 'red', rows: [['Height', '98 m'], ['Liftoff thrust', '39 MN'], ['To the Moon', '27 t'], ['Crew', '4'], ['Flights', '2'], ['First flight', '2022']] },
       },
       draw: drawRocketsScene, model: 'sls', modelLabel: 'Space Launch System',
     },
@@ -442,8 +609,8 @@ const StoryMode = (() => {
         '<strong>Blue Moon Mark 2</strong> is 16 m tall, burns hydrogen and oxygen and is built for stays of up to 30 days. A smaller cargo lander, Mark 1, goes first as a pathfinder, targeted for 2027.',
       ],
       compare: {
-        left:  { label: 'Starship HLS', tone: 'accent', rows: [['Height', '~52 m'], ['Diameter', '9 m'], ['Propellant', 'Methane, oxygen'], ['To the surface', '~100 t'], ['Selected', '2021']] },
-        right: { label: 'Blue Moon Mark 2', tone: 'cool', rows: [['Height', '16 m'], ['Engines', '3 × BE-7'], ['Propellant', 'Hydrogen, oxygen'], ['Surface stay', 'Up to 30 days'], ['Selected', '2023']] },
+        left:  { label: 'Starship HLS', tone: 'steel', rows: [['Height', '~52 m'], ['Diameter', '9 m'], ['Propellant', 'Methane, oxygen'], ['To the surface', '~100 t'], ['Selected', '2021']] },
+        right: { label: 'Blue Moon Mark 2', tone: 'blue', rows: [['Height', '16 m'], ['Engines', '3 × BE-7'], ['Propellant', 'Hydrogen, oxygen'], ['Surface stay', 'Up to 30 days'], ['Selected', '2023']] },
       },
       draw: drawLandersScene, model: 'starship', modelLabel: 'Starship, the ship that becomes HLS',
     },
@@ -453,15 +620,16 @@ const StoryMode = (() => {
       text: [
         'Apollo landed near the equator. Artemis goes to the <strong>south pole</strong>, where craters like Shackleton have rims in near-constant sunlight while their floors have been dark for billions of years.',
         'Those permanently shadowed regions hold water ice. NASA\'s LCROSS probe found water there in 2009. Ice means drinking water, breathable oxygen and rocket fuel, the reasons a base is possible at all.',
-        'NASA has narrowed the choice to landing regions within a few degrees of the pole.',
+        'In 2022 NASA named 13 candidate landing regions around the pole, each about 15 km across, back when the landing was planned for Artemis III.',
       ],
       stats: [
-        { label: 'Shackleton Crater width', val: '21', unit: 'km', sub: '4.2 km deep' },
+        { label: 'Shackleton Crater width', val: '~20', unit: 'km', sub: 'About 4 km deep' },
         { label: 'Latitude of Shackleton', val: '89.9°', unit: 'S', sub: 'Almost exactly at the pole' },
-        { label: 'Water ice found by LCROSS', val: '2009', sub: 'Impact in a shadowed crater' },
-        { label: 'Landing regions searched', val: '6°', sub: 'Of latitude around the pole' },
+        { label: 'Water ice found by LCROSS', val: '2009', sub: 'Impact in Cabeus crater' },
+        { label: 'Candidate landing regions', val: '13', sub: 'Named by NASA in Aug 2022' },
       ],
-      draw: drawLandingSiteScene,
+      draw: drawLandingSiteScene, globe: true,
+      globeLabel: 'Real LRO imagery (NASA/GSFC/ASU). Drag to tilt, scroll to zoom. Red rings mark candidate regions.',
     },
     {
       chapter: 'Staying', title: 'From flags and footprints to a base',
@@ -531,6 +699,8 @@ const StoryMode = (() => {
           <div class="story-stage">
             <canvas id="story-canvas" aria-hidden="true"></canvas>
             <div class="story-model" id="story-model"></div>
+            <div class="story-globe" id="story-globe"></div>
+            <div class="story-globe-cap" id="story-globe-cap"></div>
           </div>
           <div class="story-credit" id="story-credit"></div>
         </div>
@@ -596,6 +766,7 @@ const StoryMode = (() => {
   function close() {
     overlay.classList.remove('active'); overlay.setAttribute('aria-hidden', 'true');
     cancelAnimationFrame(animId); animId = null;
+    Globe.hide();
     document.body.style.overflow = '';
     hideModel();
     lastFocus?.focus?.({ preventScroll: true });
@@ -667,6 +838,13 @@ const StoryMode = (() => {
     overlay.classList.remove('entering'); void overlay.offsetWidth; overlay.classList.add('entering');
 
     cancelAnimationFrame(animId); startT = null;
+    Globe.hide(); $('story-globe-cap').textContent = '';
+    if (sc.globe && $('story-globe') && typeof THREE !== 'undefined') {
+      hideModel();
+      $('story-canvas').style.display = 'none';
+      if (Globe.show($('story-globe'))) { $('story-globe-cap').textContent = sc.globeLabel || ''; return; }
+      $('story-canvas').style.display = 'block';
+    }
     if (sc.model && modelManifest?.includes(sc.model)) { showModel(sc); return; }
     hideModel();
     (function loop(ts) {

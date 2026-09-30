@@ -131,13 +131,15 @@
 /* ── Comparison cards ────────────────────────────────────────────────────── */
 .story-compare { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 6px 0 4px; }
 .cmp-col { background: rgba(255, 255, 255, 0.04); border: 1px solid var(--line-2); border-radius: 12px; padding: 14px 15px; backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
-.cmp-col.accent { border-color: var(--accent-line); }
+.cmp-col.red    { border-color: var(--red-line); }
+.cmp-col.blue   { border-color: var(--blue-line); }
 .cmp-col.warm   { border-color: rgba(214, 200, 172, 0.4); }
-.cmp-col.cool   { border-color: rgba(170, 186, 210, 0.4); }
+.cmp-col.steel  { border-color: rgba(200, 208, 218, 0.4); }
 .cmp-mission { font-size: 14.5px; font-weight: 600; color: var(--text-hi); margin-bottom: 8px; letter-spacing: -0.01em; }
-.cmp-col.accent .cmp-mission { color: var(--accent); }
+.cmp-col.red .cmp-mission    { color: var(--red); }
+.cmp-col.blue .cmp-mission   { color: var(--blue); }
 .cmp-col.warm .cmp-mission   { color: #d6c8ac; }
-.cmp-col.cool .cmp-mission   { color: #aabad2; }
+.cmp-col.steel .cmp-mission  { color: #d2d8e0; }
 .cmp-row { display: flex; justify-content: space-between; gap: 10px; padding: 6px 0; font-size: 13px; }
 .cmp-row + .cmp-row { border-top: 1px solid var(--line); }
 .cmp-key { color: var(--text-3); flex-shrink: 0; }
@@ -200,3 +202,38 @@
   .story-stat.feature .stat-val { font-size: 36px; }
   .story-compare { grid-template-columns: 1fr; }
 }
+
+/* ── Moon globe (south pole chapter) ─────────────────────────────────────── */
+.story-globe { position: absolute; inset: 0; display: none; }
+.globe-canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+.globe-labels { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+.globe-label { position: absolute; left: 0; top: 0; opacity: 0; transition: opacity 0.3s ease; will-change: transform, opacity; }
+.globe-label::before {
+  content: ''; position: absolute; left: -4px; top: -4px; width: 8px; height: 8px; border-radius: 50%;
+  background: var(--text-2); box-shadow: 0 0 0 1.5px rgba(5, 7, 10, 0.8);
+}
+.globe-label.cand::before { left: -7px; top: -7px; width: 14px; height: 14px; background: transparent; border: 2px solid var(--red); box-shadow: 0 0 0 1px rgba(5, 7, 10, 0.6); }
+.globe-label.hero::before { left: -6px; top: -6px; width: 12px; height: 12px; background: var(--red); box-shadow: 0 0 0 2px rgba(5, 7, 10, 0.85), 0 0 0 4px var(--red-line); }
+.globe-label span {
+  position: absolute; left: 14px; top: -11px; padding: 3px 8px; white-space: nowrap;
+  font-size: 12px; font-weight: 500; color: var(--text);
+  background: rgba(6, 8, 12, 0.74); border: 1px solid var(--line-2); border-radius: 7px;
+  backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+}
+.globe-label.hero span { color: #fff; border-color: var(--red-line); }
+.globe-reset {
+  position: absolute; top: 12px; right: 12px; z-index: 3;
+  display: inline-flex; align-items: center; gap: 7px; height: 34px; padding: 0 13px;
+  background: rgba(6, 8, 12, 0.72); border: 1px solid var(--line-2); border-radius: var(--r-ctl);
+  backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+  color: var(--text); font-size: 13px; font-weight: 500; cursor: pointer;
+  transition: border-color var(--t-fast), transform var(--t-fast) var(--ease);
+}
+.globe-reset:hover { border-color: var(--blue-line); }
+.globe-reset:active { transform: scale(0.97); }
+.globe-reset .ph { font-size: 15px; color: var(--blue); }
+.story-globe-cap { position: absolute; left: 0; right: 0; bottom: 0; z-index: 2; padding: 26px 16px 11px; font-size: 12px; line-height: 1.4; color: var(--text-2); background: linear-gradient(to top, rgba(4, 6, 10, 0.88), transparent); pointer-events: none; }
+.story-globe-cap:empty { display: none; }
+
+.globe-label.side-l span { left: auto; right: 14px; }
+.globe-label.side-b span { top: 10px; left: -26px; }

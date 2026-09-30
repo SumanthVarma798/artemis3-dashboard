@@ -20,6 +20,8 @@ const RocketHangar = (() => {
     raptor:      { title: 'SpaceX Starship Raptor 3 engine',     author: 'VoitAa',           url: 'https://sketchfab.com/VoitAa' },
     newglenn:    { title: 'New Glenn (Better Version)',          author: 'Wolfpack278',      url: 'https://sketchfab.com/wolfpack278' },
     sls:         { title: 'Artemis II - Space Launch System',    author: 'RapidReality',     url: 'https://sketchfab.com/RapidReality' },
+    orion:       { title: 'Orion Capsule (crew module geometry)', author: 'NASA 3D Resources', url: 'https://science.nasa.gov/3d-resources/orion-capsule/',
+                   license: 'public domain', licenseUrl: 'https://www.nasa.gov/nasa-brand-center/images-and-media/', note: 'Service module and solar arrays are a simplified model made for this project.' },
     be4:         { title: 'Blue Origin BE-4',                    author: 'MartianDays',      url: 'https://sketchfab.com/MartianDays' },
   };
 
@@ -30,7 +32,7 @@ const RocketHangar = (() => {
       role: 'Launches Orion. Flown twice: Artemis I and II.',
       specs: [S('Height', '98 m'), S('Diameter', '8.4 m'), S('Liftoff mass', '2,610 t'), S('Thrust', '39 MN'), S('To the Moon', '27 t'), S('First flight', 'Nov 16, 2022')],
       desc: 'NASA\'s deep-space rocket. It carried the crewed Artemis II flyby in April 2026 and flies next on Artemis III, a 2027 Earth-orbit docking test, with a spacer in place of the upper stage. NASA cancelled the larger Block 1B and Block 2 versions in February 2026 to standardize on Block 1.' },
-    { key: 'orion', name: 'Orion', company: 'NASA', kind: 'Capsule',
+    { key: 'orion', name: 'Orion', company: 'NASA', kind: 'Capsule', file: 'scene.glb',
       role: 'Crew vehicle for every Artemis mission',
       specs: [S('Crew', '4'), S('Diameter', '5.03 m'), S('Pressurized', '19.6 m³'), S('Power', '11 kW'), S('Design life', '21 days'), S('Flights', '3')],
       desc: 'Lockheed Martin builds the capsule and Airbus builds the European Service Module for ESA. Orion flew uncrewed on EFT-1 in 2014 and Artemis I in 2022, then carried four astronauts around the Moon on Artemis II as Integrity. On Artemis III it becomes the docking vehicle for the landers.' },
@@ -172,13 +174,14 @@ const RocketHangar = (() => {
       if (on) b.setAttribute('aria-current', 'true'); else b.removeAttribute('aria-current');
     });
 
-    const viewer = $('rh-viewer'), src = `${MODEL_BASE}/${v.key}/scene.gltf`;
+    const viewer = $('rh-viewer'), src = `${MODEL_BASE}/${v.key}/${v.file || 'scene.gltf'}`;
     const hasModel = manifest && manifest.includes(v.key);
     if (hasModel) mount(viewer, v, src); else noModel(viewer, v, manifest !== null);
     $('rh-hint').textContent = hasModel ? 'Drag to rotate. Scroll to zoom.' : '';
 
+    const lic = v.credit && (v.credit.license ? `<a href="${v.credit.licenseUrl}" target="_blank" rel="noopener">${esc(v.credit.license)}</a>` : '<a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener">CC BY 4.0</a>');
     const credit = v.credit
-      ? `<div class="rh-credit">3D model "${esc(v.credit.title)}" by <a href="${v.credit.url}" target="_blank" rel="noopener">${esc(v.credit.author)}</a>, <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener">CC BY 4.0</a></div>`
+      ? `<div class="rh-credit">3D model "${esc(v.credit.title)}" by <a href="${v.credit.url}" target="_blank" rel="noopener">${esc(v.credit.author)}</a>, ${lic}.${v.credit.note ? ' ' + esc(v.credit.note) : ''}</div>`
       : '';
     const specs = $('rh-specs');
     specs.innerHTML = `

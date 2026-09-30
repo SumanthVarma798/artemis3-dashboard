@@ -1,0 +1,5 @@
+Orion (crew module + service module)
+Crew module geometry: NASA 3D Resources, "Orion Capsule" (printable STL, no forward bay cover),
+https://science.nasa.gov/3d-resources/orion-capsule/ . NASA 3D models are free to use (NASA media usage guidelines).
+Service module, engine bell and solar arrays: simplified procedural geometry generated for this project.
+The STL was welded, given smooth normals and colored (heat shield vs body) and packed as a binary glTF.

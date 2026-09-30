@@ -14,3 +14,12 @@ Files (downloaded and resized/renamed for this project):
 
 Attribution displayed in-app (orbital panel footer) and here, per CC BY 4.0.
 "Textures © Solar System Scope (solarsystemscope.com), CC BY 4.0"
+
+
+NASA lunar imagery (public domain)
+----------------------------------
+  moon_wac_3k.jpg            LRO WAC global mosaic (NASA/GSFC/Arizona State University), 128 tiles of the
+                             303 px/deg layer from NASA Moon Trek, stitched to 3072 x 1536, contrast-stretched.
+  moon_south_pole_600km.jpg  LROC WAC south pole mosaic, about 600 km across, polar stereographic (NASA/GSFC/
+                             Arizona State University, PIA13523), via Wikimedia Commons. The baked-in graticule
+                             lines were removed and the image was contrast-stretched and resized to 2048 px.
