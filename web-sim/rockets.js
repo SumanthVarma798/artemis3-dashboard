@@ -1,30 +1,17 @@
-// Rocket Hangar — fetch the SpaceX rocket list, match each vehicle to a local
-// glTF asset, and show it in <model-viewer> alongside the parsed API spec text.
+// Rocket Hangar: 3D vehicle viewer with a spec sheet.
 //
-// Workflow (per spec):
-//   1. Fetch rockets from api.spacexdata.com/v4/rockets (falls back to v5)
-//   2. Match the rocket's normalized name/id to assets/models/<key>/scene.gltf
-//   3. Load the local glTF into <model-viewer> next to the parsed API data
+// Specs are bundled and checked against NASA, SpaceX, Blue Origin and Wikipedia vehicle pages on 2026-09-30.
+// They are deliberately not merged from the r-spacex API: that API is unmaintained and returns older numbers
+// (for example a pre-V3 Starship) that would overwrite the current ones.
 //
-// The SpaceX API is frequently offline (Cloudflare 522), so a bundled fallback
-// list is used when the fetch fails. NASA (SLS) and Blue Origin vehicles +
-// engines are always included (those agencies have no equivalent public API).
-//
-// 3D models are CC-BY-4.0 from Sketchfab — attribution is shown in the UI and
-// kept in each assets/models/<key>/license.txt.
+// 3D models are CC-BY-4.0 from Sketchfab. Attribution is shown in the UI and kept in
+// assets/models/<key>/license.txt. A vehicle without a model still shows its spec sheet.
 const RocketHangar = (() => {
 
-  const SPACEX_APIS = [
-    'https://api.spacexdata.com/v4/rockets',
-    'https://api.spacexdata.com/v5/rockets',
-  ];
   const MODEL_BASE = 'assets/models';
+  const CHECKED = 'Sep 30, 2026';
+  const GROUPS = [['NASA', 'na'], ['SpaceX', 'sx'], ['Blue Origin', 'bo']];
 
-  function normalizeKey(name) {
-    return (name || '').toLowerCase().replace(/[^a-z0-9]/g, '');
-  }
-
-  // ── CC-BY-4.0 attribution for the bundled glTF models ───────────────────────
   const CREDITS = {
     falcon9:     { title: 'Falcon 9 - SpaceX',                   author: 'Stanley Creative', url: 'https://sketchfab.com/Stanley_Creative' },
     falconheavy: { title: 'SpaceX Falcon Heavy',                 author: 'SunnyChen753',     url: 'https://sketchfab.com/sunnychen753' },
@@ -36,145 +23,65 @@ const RocketHangar = (() => {
     be4:         { title: 'Blue Origin BE-4',                    author: 'MartianDays',      url: 'https://sketchfab.com/MartianDays' },
   };
 
-  // ── Vehicle database (real figures) ─────────────────────────────────────────
-  // Rockets carry numeric fields (auto-formatted); engines/custom carry `specs`.
-  const BUNDLED = [
-    { key: 'falcon9', name: 'Falcon 9', company: 'SpaceX', flag: '🇺🇸', kind: 'rocket',
-      height: 70, diameter: 3.7, mass: 549054, stages: 2, first_flight: '2010-06-04', success_pct: 99, active: true,
-      role: 'Workhorse orbital launcher · reusable first stage',
-      desc: 'The first orbital-class reusable rocket. Its booster lands and re-flies, slashing launch cost and enabling rapid Starlink and crew cadence.' },
+  const S = (k, v) => ({ k, v });
+  const VEHICLES = [
+    // NASA
+    { key: 'sls', name: 'Space Launch System', company: 'NASA', kind: 'Rocket',
+      role: 'Launches Orion. Flown twice: Artemis I and II.',
+      specs: [S('Height', '98 m'), S('Diameter', '8.4 m'), S('Liftoff mass', '2,610 t'), S('Thrust', '39 MN'), S('To the Moon', '27 t'), S('First flight', 'Nov 16, 2022')],
+      desc: 'NASA\'s deep-space rocket. It carried the crewed Artemis II flyby in April 2026 and flies next on Artemis III, a 2027 Earth-orbit docking test, with a spacer in place of the upper stage. NASA cancelled the larger Block 1B and Block 2 versions in February 2026 to standardize on Block 1.' },
+    { key: 'orion', name: 'Orion', company: 'NASA', kind: 'Capsule',
+      role: 'Crew vehicle for every Artemis mission',
+      specs: [S('Crew', '4'), S('Diameter', '5.03 m'), S('Pressurized', '19.6 m³'), S('Power', '11 kW'), S('Design life', '21 days'), S('Flights', '3')],
+      desc: 'Lockheed Martin builds the capsule and Airbus builds the European Service Module for ESA. Orion flew uncrewed on EFT-1 in 2014 and Artemis I in 2022, then carried four astronauts around the Moon on Artemis II as Integrity. On Artemis III it becomes the docking vehicle for the landers.' },
 
-    { key: 'falconheavy', name: 'Falcon Heavy', company: 'SpaceX', flag: '🇺🇸', kind: 'rocket',
-      height: 70, diameter: 12.2, mass: 1420788, stages: 2, first_flight: '2018-02-06', success_pct: 100, active: true,
-      role: 'Heavy-lift · three Falcon 9 cores',
-      desc: 'Three Falcon 9 first stages strapped together — 27 Merlin engines at liftoff. Among the most capable operational rockets in the world.' },
-
-    { key: 'starship', name: 'Starship', company: 'SpaceX', flag: '🇺🇸', kind: 'rocket',
-      height: 121, diameter: 9, mass: 5000000, stages: 2, first_flight: '2023-04-20', success_pct: 40, active: true,
-      role: 'Super-heavy · fully reusable · Artemis III HLS',
-      desc: 'The largest rocket ever built. The Starship HLS variant is NASA’s Artemis III lunar lander — it carries the crew from NRHO down to the south pole and back.' },
-
-    { key: 'superheavy', name: 'Super Heavy', company: 'SpaceX', flag: '🇺🇸', kind: 'booster',
-      role: 'Starship first stage · 33 Raptor engines',
-      specs: [
-        { k: 'HEIGHT', v: '71 m' }, { k: 'DIAMETER', v: '9 m' },
-        { k: 'THRUST', v: '74 MN' }, { k: 'ENGINES', v: '33 × Raptor' },
-        { k: 'PROPELLANT', v: 'CH₄ / LOX' }, { k: 'FIRST FLIGHT', v: '2023-04-20' },
-      ],
-      desc: 'The Starship booster — 33 Raptor engines producing roughly twice the liftoff thrust of the Saturn V. It flies back to the pad to be caught by the tower’s arms.' },
-
-    { key: 'raptor', name: 'Raptor 3', company: 'SpaceX', flag: '🇺🇸', kind: 'engine',
+    // SpaceX
+    { key: 'starship', name: 'Starship', company: 'SpaceX', kind: 'Rocket',
+      role: 'Fully reusable super-heavy launcher. HLS lander variant.',
+      specs: [S('Stack height', '124 m (V3)'), S('Diameter', '9 m'), S('Stack mass', '5,000 t'), S('Stages', '2'), S('First orbit', 'Sep 28, 2026'), S('First flight', 'Apr 20, 2023')],
+      desc: 'The largest rocket ever built. Flight 14 on September 28, 2026 was its first orbital mission. A Starship test article flies on Artemis III and docks with Orion; the landing version, Starship HLS, is about 52 m tall and designed to put roughly 100 tonnes on the Moon.' },
+    { key: 'superheavy', name: 'Super Heavy', company: 'SpaceX', kind: 'Booster',
+      role: 'Starship first stage',
+      specs: [S('Height', '71 m'), S('Diameter', '9 m'), S('Engines', '33 × Raptor'), S('Propellant', 'Methane, oxygen'), S('Gross mass', '3,675 t'), S('First flight', 'Apr 20, 2023')],
+      desc: 'The Starship booster. It flies back to the launch site to be caught by the tower\'s arms instead of landing on legs.' },
+    { key: 'raptor', name: 'Raptor 3', company: 'SpaceX', kind: 'Engine',
       role: 'Full-flow staged-combustion engine',
-      specs: [
-        { k: 'THRUST', v: '280 tf' }, { k: 'CYCLE', v: 'Full-flow' },
-        { k: 'PROPELLANT', v: 'CH₄ / LOX' }, { k: 'ISP (VAC)', v: '~350 s' },
-        { k: 'DRY MASS', v: '~1,525 kg' }, { k: 'POWERS', v: 'Starship' },
-      ],
-      desc: 'The engine behind Starship and Super Heavy. Raptor 3 is the simplified, higher-thrust iteration — among the highest chamber-pressure rocket engines ever flown.' },
+      specs: [S('Thrust', '280 tf'), S('Cycle', 'Full-flow'), S('Propellant', 'Methane, oxygen'), S('Powers', 'Starship')],
+      desc: 'The engine behind Starship and Super Heavy. Full-flow staged combustion runs at very high chamber pressure, which is why it is so efficient.' },
+    { key: 'falcon9', name: 'Falcon 9', company: 'SpaceX', kind: 'Rocket',
+      role: 'Workhorse orbital launcher with a reusable first stage',
+      specs: [S('Height', '70 m'), S('Diameter', '3.7 m'), S('Liftoff mass', '549 t'), S('Stages', '2'), S('First flight', 'Jun 4, 2010')],
+      desc: 'The first orbital-class rocket to reuse its first stage. Its boosters land and re-fly, which cut launch costs and made frequent crew and Starlink launches routine.' },
+    { key: 'falconheavy', name: 'Falcon Heavy', company: 'SpaceX', kind: 'Rocket',
+      role: 'Heavy lift built from three Falcon 9 cores',
+      specs: [S('Height', '70 m'), S('Width', '12.2 m'), S('Liftoff mass', '1,421 t'), S('Engines', '27 × Merlin'), S('First flight', 'Feb 6, 2018')],
+      desc: 'Three Falcon 9 first stages side by side, 27 Merlin engines at liftoff. The two side boosters usually return to land together.' },
 
-    { key: 'falcon1', name: 'Falcon 1', company: 'SpaceX', flag: '🇺🇸', kind: 'rocket',
-      height: 22.25, diameter: 1.68, mass: 30146, stages: 2, first_flight: '2006-03-24', success_pct: 40, active: false,
-      role: 'Retired · first privately-built orbital rocket',
-      desc: 'SpaceX’s first rocket. Its fourth flight in 2008 was the first privately-developed liquid-fuel launcher to reach orbit — the company’s survival hung on it.' },
-
-    { key: 'sls', name: 'Space Launch System', company: 'NASA', flag: '🇺🇸', kind: 'rocket',
-      role: 'Super-heavy · Artemis launch vehicle',
-      specs: [
-        { k: 'HEIGHT', v: '98 m' }, { k: 'DIAMETER', v: '8.4 m' },
-        { k: 'MASS', v: '2,600 t' }, { k: 'THRUST', v: '39.1 MN' },
-        { k: 'STAGES', v: '2' }, { k: 'FIRST FLIGHT', v: '2022-11-16' },
-      ],
-      desc: 'NASA’s deep-space rocket. SLS lifts the Orion crew capsule toward the Moon; Block 1B with the Exploration Upper Stage will fly the Artemis III landing mission.' },
-
-    { key: 'newglenn', name: 'New Glenn', company: 'Blue Origin', flag: '🇺🇸', kind: 'rocket',
-      height: 98, diameter: 7, mass: 1450000, stages: 2, first_flight: '2025-01-16', success_pct: 50, active: true,
-      role: 'Heavy-lift · reusable first stage · 7× BE-4',
-      desc: 'Blue Origin’s orbital rocket, named for John Glenn. Seven BE-4 engines burning methalox; the first stage lands on a sea-based platform for reuse.' },
-
-    { key: 'newshepard', name: 'New Shepard', company: 'Blue Origin', flag: '🇺🇸', kind: 'rocket',
-      height: 18, diameter: 3.7, mass: 75000, stages: 1, first_flight: '2015-04-29', success_pct: 95, active: true,
-      role: 'Suborbital · crewed space tourism',
-      desc: 'A reusable suborbital vehicle named for Alan Shepard. Carries tourists and research payloads past the Kármán line and returns under parachutes.' },
-
-    { key: 'bluemoon', name: 'Blue Moon', company: 'Blue Origin', flag: '🇺🇸', kind: 'lander',
-      height: 16, diameter: 7, mass: 45000, stages: 1, first_flight: 'TBD', success_pct: null, active: true,
-      role: 'Lunar lander · Artemis V · BE-7 engine',
-      desc: 'Blue Origin’s hydrogen-fueled lunar lander, selected by NASA for Artemis V. The BE-7 burns liquid hydrogen and oxygen — the most efficient chemical propellant pairing.' },
-
-    { key: 'be4', name: 'BE-4', company: 'Blue Origin', flag: '🇺🇸', kind: 'engine',
-      role: 'Methalox staged-combustion engine',
-      specs: [
-        { k: 'THRUST', v: '2.4 MN' }, { k: 'CYCLE', v: 'Ox-rich staged' },
-        { k: 'PROPELLANT', v: 'CH₄ / LOX' }, { k: 'FLIES ON', v: 'New Glenn · Vulcan' },
-      ],
-      desc: 'Blue Origin’s workhorse engine. Seven power New Glenn’s first stage, and it also flies on ULA’s Vulcan Centaur — the first American methalox engine in service.' },
+    // Blue Origin
+    { key: 'newglenn', name: 'New Glenn', company: 'Blue Origin', kind: 'Rocket',
+      role: 'Heavy lift with a reusable first stage',
+      specs: [S('Height', '98 m'), S('Diameter', '7 m'), S('Engines', '7 × BE-4'), S('To low orbit', '45 t'), S('To the Moon', '7 t'), S('First flight', 'Jan 16, 2025')],
+      desc: 'Named for John Glenn. Blue Origin plans to launch its Blue Moon landers on it, starting with the uncrewed Mark 1 pathfinder. The first stage lands on a sea-based platform to be reused.' },
+    { key: 'bluemoon', name: 'Blue Moon', company: 'Blue Origin', kind: 'Lander',
+      role: 'Crewed lunar lander, one of two NASA is developing',
+      specs: [S('Mark 2 height', '16 m'), S('Engines', '3 × BE-7'), S('Propellant', 'Hydrogen, oxygen'), S('Surface stay', 'Up to 30 days'), S('Mark 1 pathfinder', 'Targeted 2027')],
+      desc: 'A test version of the Mark 2 docks with Orion on Artemis III. A smaller uncrewed cargo lander, Mark 1, flies first as a pathfinder. If Blue Moon is ready before Starship HLS, it could fly the Artemis IV landing in early 2028.' },
+    { key: 'be4', name: 'BE-4', company: 'Blue Origin', kind: 'Engine',
+      role: 'Methane staged-combustion engine',
+      specs: [S('Thrust', '2.4 MN'), S('Cycle', 'Oxidizer-rich staged'), S('Propellant', 'Methane, oxygen'), S('Flies on', 'New Glenn, Vulcan')],
+      desc: 'Seven of them power New Glenn\'s first stage, and two power United Launch Alliance\'s Vulcan Centaur.' },
   ];
+  VEHICLES.forEach(v => { if (CREDITS[v.key]) v.credit = CREDITS[v.key]; });
 
-  // Attach credits to entries that have a bundled model
-  BUNDLED.forEach(r => { if (CREDITS[r.key]) r.credit = CREDITS[r.key]; });
-
-  // ── Spec helpers ─────────────────────────────────────────────────────────────
-
-  function rocketSpecs(r) {
-    const t = (v, u) => (v === null || v === undefined) ? '—' : v.toLocaleString('en-US') + (u || '');
-    return [
-      { k: 'HEIGHT',       v: t(r.height, ' m') },
-      { k: 'DIAMETER',     v: t(r.diameter, ' m') },
-      { k: 'MASS',         v: r.mass ? (r.mass / 1000).toLocaleString('en-US') + ' t' : '—' },
-      { k: 'STAGES',       v: t(r.stages) },
-      { k: 'SUCCESS',      v: (r.success_pct === null || r.success_pct === undefined) ? '—' : r.success_pct + '%' },
-      { k: 'FIRST FLIGHT', v: r.first_flight || '—' },
-    ];
-  }
-
-  function specsFor(r) { return r.specs || rocketSpecs(r); }
-
-  function coClass(company) {
-    return company === 'SpaceX' ? 'sx' : company === 'NASA' ? 'na' : 'bo';
-  }
-
-  // ── Data loading ─────────────────────────────────────────────────────────────
-
-  function bundledList() { return [...BUNDLED]; }
-
-  // Try the live SpaceX API (v4 then v5, fast timeout); null if unreachable
-  async function fetchSpacexLive() {
-    for (const url of SPACEX_APIS) {
-      try {
-        const res = await fetch(url, { headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(6000) });
-        if (!res.ok) continue;
-        const api = await res.json();
-        if (!Array.isArray(api) || !api.length) continue;
-        return api.map(r => ({
-          key:          normalizeKey(r.name),
-          height:       r.height?.meters ?? null,
-          diameter:     r.diameter?.meters ?? null,
-          mass:         r.mass?.kg ?? null,
-          stages:       r.stages ?? null,
-          first_flight: r.first_flight ?? null,
-          success_pct:  r.success_rate_pct ?? null,
-          active:       r.active ?? null,
-          desc:         r.description || null,
-        }));
-      } catch { /* try next version */ }
-    }
-    return null;
-  }
-
-  // ── UI ───────────────────────────────────────────────────────────────────────
-
-  let rockets  = [];
-  let current  = 0;
-  let built    = false;
-  let enriched = false;
-  let manifest = null;
+  let current = 0, built = false, manifest = null, lastFocus = null, overlay = null;
+  const $ = id => document.getElementById(id);
+  const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const reduce = window.matchMedia('(prefers-reduced-motion: reduce)');
 
   async function loadManifest() {
     if (manifest) return manifest;
-    try {
-      const res = await fetch(`${MODEL_BASE}/manifest.json`, { cache: 'no-cache' });
-      manifest = res.ok ? await res.json() : [];
-    } catch { manifest = []; }
+    try { const r = await fetch(`${MODEL_BASE}/manifest.json`, { cache: 'no-cache' }); manifest = r.ok ? await r.json() : []; }
+    catch { manifest = []; }
     return manifest;
   }
 
@@ -183,139 +90,130 @@ const RocketHangar = (() => {
     built = true;
 
     const btn = document.createElement('button');
-    btn.id = 'rocket-open-btn';
-    btn.className = 'tb-exhibit';
-    btn.innerHTML = '<span class="lb-glyph">⬢</span> HANGAR';
+    btn.id = 'rocket-open-btn'; btn.className = 'tb-exhibit'; btn.type = 'button';
+    btn.innerHTML = '<i class="ph ph-rocket-launch" aria-hidden="true"></i><span class="tb-label">Hangar</span>';
     btn.onclick = open;
-    (document.getElementById('exhibit-nav') || document.body).appendChild(btn);
+    ($('exhibit-nav') || document.body).appendChild(btn);
 
-    const overlay = document.createElement('div');
+    overlay = document.createElement('div');
     overlay.id = 'rocket-overlay';
+    overlay.setAttribute('role', 'dialog'); overlay.setAttribute('aria-modal', 'true'); overlay.setAttribute('aria-label', 'Rocket hangar'); overlay.setAttribute('aria-hidden', 'true');
     overlay.innerHTML = `
-      <div class="rh-header">
-        <span class="rh-logo">⬢ ROCKET HANGAR · <span>VEHICLE DATABASE</span></span>
-        <span class="rh-source" id="rh-source">—</span>
-        <button class="rh-close" id="rh-close">✕</button>
-      </div>
+      <header class="rh-header">
+        <span class="rh-logo">Rocket hangar</span>
+        <span class="rh-source">Specs checked ${CHECKED}</span>
+        <button class="rh-close" id="rh-close" type="button" aria-label="Close hangar"><i class="ph ph-x" aria-hidden="true"></i></button>
+      </header>
       <div class="rh-body">
-        <div class="rh-list" id="rh-list"></div>
-        <div class="rh-stage"><div class="rh-viewer" id="rh-viewer"></div></div>
-        <div class="rh-specs" id="rh-specs"></div>
+        <nav class="rh-list" id="rh-list" aria-label="Vehicles"></nav>
+        <div class="rh-stage"><div class="rh-viewer" id="rh-viewer"></div><div class="rh-hint" id="rh-hint"></div></div>
+        <aside class="rh-specs" id="rh-specs" aria-live="polite"></aside>
       </div>`;
     document.body.appendChild(overlay);
 
-    document.getElementById('rh-close').onclick = close;
-    document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape' && overlay.classList.contains('active')) close();
-    });
+    $('rh-close').onclick = close;
+    overlay.addEventListener('keydown', onKey);
+    renderList();
+  }
+
+  function onKey(e) {
+    if (e.key === 'Escape') { e.preventDefault(); close(); return; }
+    if (e.key === 'Tab') {
+      const f = [...overlay.querySelectorAll('button:not([disabled]), model-viewer')].filter(x => x.offsetParent !== null);
+      if (!f.length) return;
+      if (e.shiftKey && document.activeElement === f[0]) { e.preventDefault(); f[f.length - 1].focus(); }
+      else if (!e.shiftKey && document.activeElement === f[f.length - 1]) { e.preventDefault(); f[0].focus(); }
+      return;
+    }
+    if ((e.key === 'ArrowDown' || e.key === 'ArrowUp') && e.target.closest?.('.rh-list')) {
+      e.preventDefault();
+      const d = e.key === 'ArrowDown' ? 1 : -1, n = VEHICLES.length;
+      const next = (current + d + n) % n;
+      select(next); overlay.querySelector(`.rh-item[data-i="${next}"]`)?.focus();
+    }
   }
 
   function open() {
     build();
-    document.getElementById('rocket-overlay').classList.add('active');
-
-    if (!rockets.length) {
-      rockets = bundledList();
-      document.getElementById('rh-source').textContent = 'bundled specs';
-      renderList();
-    }
-    select(current);
-
-    loadManifest().then(() => select(current));
-
-    if (!enriched) {
-      enriched = true;
-      fetchSpacexLive().then(live => {
-        if (!live) {
-          document.getElementById('rh-source').textContent = 'bundled specs · SpaceX API offline';
-          return;
-        }
-        // Merge live numbers into matching entries; keep models, credits, extras
-        const byKey = Object.fromEntries(live.map(l => [l.key, l]));
-        rockets = rockets.map(r => {
-          const l = byKey[r.key];
-          if (!l) return r;
-          return { ...r, ...Object.fromEntries(Object.entries(l).filter(([, v]) => v != null)), specs: r.specs, live: true };
-        });
-        document.getElementById('rh-source').textContent = 'SpaceX API · live + bundled';
-        renderList();
-        select(current);
-      });
-    }
+    lastFocus = document.activeElement;
+    overlay.classList.add('active'); overlay.setAttribute('aria-hidden', 'false');
+    document.body.style.overflow = 'hidden';
+    loadManifest().then(() => select(current, true));
+    select(current, true);
+    setTimeout(() => overlay.querySelector(`.rh-item[data-i="${current}"]`)?.focus({ preventScroll: true }), 60);
   }
 
   function close() {
-    document.getElementById('rocket-overlay').classList.remove('active');
+    overlay.classList.remove('active'); overlay.setAttribute('aria-hidden', 'true');
+    document.body.style.overflow = '';
+    $('rh-viewer').innerHTML = '';
+    lastFocus?.focus?.({ preventScroll: true });
   }
 
   function renderList() {
-    const el = document.getElementById('rh-list');
-    el.innerHTML = rockets.map((r, i) => `
-      <button class="rh-item ${coClass(r.company)}" data-i="${i}">
-        <span class="rh-item-name">${r.name}</span>
-        <span class="rh-item-co">${r.flag} ${r.company}${r.kind === 'engine' ? ' · engine' : r.active === false ? ' · retired' : ''}</span>
-      </button>`).join('');
-    el.querySelectorAll('.rh-item').forEach(b => b.onclick = () => select(+b.dataset.i));
+    $('rh-list').innerHTML = GROUPS.map(([co, cls]) => `
+      <div class="rh-group ${cls}">
+        <div class="rh-group-name">${co}</div>
+        ${VEHICLES.map((v, i) => v.company === co ? `
+          <button class="rh-item" type="button" data-i="${i}">
+            <span class="rh-item-name">${esc(v.name)}</span>
+            <span class="rh-item-kind">${esc(v.kind)}</span>
+          </button>` : '').join('')}
+      </div>`).join('');
+    overlay.querySelectorAll('.rh-item').forEach(b => b.onclick = () => select(+b.dataset.i));
   }
 
-  function select(i) {
+  function select(i, instant) {
+    const first = !overlay.dataset.ready; overlay.dataset.ready = '1';
     current = i;
-    const r = rockets[i];
-    document.querySelectorAll('.rh-item').forEach((b, j) => b.classList.toggle('active', j === i));
+    const v = VEHICLES[i];
+    overlay.querySelectorAll('.rh-item').forEach(b => {
+      const on = +b.dataset.i === i; b.classList.toggle('active', on);
+      if (on) b.setAttribute('aria-current', 'true'); else b.removeAttribute('aria-current');
+    });
 
-    const viewer = document.getElementById('rh-viewer');
-    const src    = `${MODEL_BASE}/${r.key}/scene.gltf`;
-    if (manifest && manifest.includes(r.key)) mountViewer(viewer, r, src);
-    else                                       showPlaceholder(viewer, r, src);
+    const viewer = $('rh-viewer'), src = `${MODEL_BASE}/${v.key}/scene.gltf`;
+    const hasModel = manifest && manifest.includes(v.key);
+    if (hasModel) mount(viewer, v, src); else noModel(viewer, v, manifest !== null);
+    $('rh-hint').textContent = hasModel ? 'Drag to rotate. Scroll to zoom.' : '';
 
-    const specsEl = document.getElementById('rh-specs');
-    const cc = coClass(r.company);
-    const credit = r.credit
-      ? `<div class="rh-credit">3D model: “${r.credit.title}” by
-           <a href="${r.credit.url}" target="_blank" rel="noopener">${r.credit.author}</a>
-           · <a href="http://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener">CC-BY-4.0</a></div>`
-      : `<div class="rh-note">3D model loads from <code>${src}</code></div>`;
-
-    specsEl.innerHTML = `
+    const credit = v.credit
+      ? `<div class="rh-credit">3D model "${esc(v.credit.title)}" by <a href="${v.credit.url}" target="_blank" rel="noopener">${esc(v.credit.author)}</a>, <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener">CC BY 4.0</a></div>`
+      : '';
+    const specs = $('rh-specs');
+    specs.innerHTML = `
       <div class="rh-spec-head">
-        <div class="rh-spec-co ${cc}">${r.flag} ${r.company.toUpperCase()}</div>
-        <div class="rh-spec-name">${r.name}</div>
-        <div class="rh-spec-role">${r.role || ''}</div>
+        <div class="rh-spec-co ${GROUPS.find(g => g[0] === v.company)[1]}">${esc(v.company)}</div>
+        <h2 class="rh-spec-name">${esc(v.name)}</h2>
+        <div class="rh-spec-role">${esc(v.role)}</div>
       </div>
-      <div class="rh-spec-grid">
-        ${specsFor(r).map(s => `<div class="rh-spec"><div class="rh-k">${s.k}</div><div class="rh-v">${s.v}</div></div>`).join('')}
-      </div>
-      <div class="rh-desc">${r.desc || ''}</div>
+      <dl class="rh-spec-grid">
+        ${v.specs.map(s => `<div class="rh-spec"><dt class="rh-k">${esc(s.k)}</dt><dd class="rh-v">${esc(s.v)}</dd></div>`).join('')}
+      </dl>
+      <p class="rh-desc">${esc(v.desc)}</p>
       ${credit}`;
+    if (!instant && !reduce.matches) {
+      specs.classList.remove('swap'); void specs.offsetWidth; specs.classList.add('swap');
+      viewer.classList.remove('swap'); void viewer.offsetWidth; viewer.classList.add('swap');
+    }
   }
 
-  function mountViewer(viewer, r, src) {
+  function mount(viewer, v, src) {
     viewer.innerHTML = `
-      <model-viewer
-        src="${src}"
-        alt="${r.name} 3D model"
-        camera-controls auto-rotate rotation-per-second="20deg"
-        interaction-prompt="none"
-        shadow-intensity="1.1" exposure="1.15"
-        environment-image="neutral"
-        loading="eager" reveal="auto"
+      <model-viewer src="${src}" alt="3D model of ${esc(v.name)}"
+        camera-controls ${reduce.matches ? '' : 'auto-rotate rotation-per-second="18deg"'} interaction-prompt="none"
+        shadow-intensity="1.1" exposure="1.15" environment-image="neutral" loading="eager" reveal="auto"
         style="width:100%;height:100%;background:transparent;">
-        <div slot="poster" class="rh-poster">Loading ${r.name}…</div>
+        <div slot="poster" class="rh-poster">Loading ${esc(v.name)}</div>
         <div slot="progress-bar"></div>
       </model-viewer>`;
-    viewer.querySelector('model-viewer')
-      .addEventListener('error', () => showPlaceholder(viewer, r, src));
+    viewer.querySelector('model-viewer').addEventListener('error', () => noModel(viewer, v, true));
   }
 
-  function showPlaceholder(viewer, r, src) {
-    viewer.innerHTML = `
-      <div class="rh-placeholder">
-        <div class="rh-ph-icon">⬢</div>
-        <div class="rh-ph-title">No 3D model for ${r.name} yet</div>
-        <div class="rh-ph-path">Add a glTF at<br><code>${src}</code><br>and list <code>"${r.key}"</code> in manifest.json</div>
-        <div class="rh-ph-hint">See assets/models/README.md — grab one from Sketchfab,
-        CGTrader, or NASA 3D Resources (mind the license).</div>
-      </div>`;
+  function noModel(viewer, v, known) {
+    viewer.innerHTML = known
+      ? `<div class="rh-placeholder"><div class="rh-ph-title">No 3D model for ${esc(v.name)} yet</div><div class="rh-ph-hint">The spec sheet is still accurate.</div></div>`
+      : `<div class="rh-poster">Loading</div>`;
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', build);

@@ -1,195 +1,152 @@
-// DSN Now integration + comm window scheduler
+// Deep Space Network, live from DSN Now (NASA JPL).
+//
+// The feed is flat XML: a <station> element is followed by its sibling <dish> elements, and dishes are
+// named like "DSS14" (no hyphen). eyes.nasa.gov sends Access-Control-Allow-Origin: *, so the browser
+// can fetch it directly. Pro users can route through the Supabase Edge Function instead.
+//
+// When the feed is unreachable we say so. We do not invent spacecraft or comm windows.
 const DSN = (() => {
 
-  // DSN Now XML endpoint (proxied via allorigins to bypass CORS)
   const DSN_URL = 'https://eyes.nasa.gov/dsn/data/dsn.xml';
-  const PROXY   = 'https://api.allorigins.win/get?url=';
+  const STATION_KEY = { gdscc: 'goldstone', mdscc: 'madrid', cdscc: 'canberra' };
+  const SITE_KEYS = ['goldstone', 'madrid', 'canberra'];
 
-  const SITES = {
-    goldstone: { id: 'dishes-goldstone', dot: document.querySelector('#dsn-goldstone .site-dot') },
-    madrid:    { id: 'dishes-madrid',    dot: document.querySelector('#dsn-madrid .site-dot') },
-    canberra:  { id: 'dishes-canberra',  dot: document.querySelector('#dsn-canberra .site-dot') },
-  };
+  // Names Artemis spacecraft may use in the feed. None is flying until Artemis III.
+  const ARTEMIS_TARGETS = ['ORION', 'ARTEMIS', 'EM1', 'EM2', 'EM3', 'ART2', 'ART3', 'MPCV'];
+  // Placeholders the DSN uses when a dish has no spacecraft
+  const NOT_A_SPACECRAFT = ['DSN', 'DSS', 'CAL', 'N/A'];
 
-  // Artemis/Orion spacecraft IDs in DSN data
-  const ARTEMIS_TARGETS = ['ORION', 'ARTEMIS', 'GATEWAY', 'LOP-G', 'MPCV'];
-
-  // Predicted comm windows for Artemis III (generated from mission timeline)
-  // Format: { start: Date, end: Date, station: string, type: string }
-  function generateCommWindows() {
-    const now   = new Date();
-    const base  = new Date(now);
-    base.setMinutes(0, 0, 0);
-    const windows = [];
-    // DSN rotates ~120 deg apart — 8h windows per site
-    const sites = ['Goldstone', 'Madrid', 'Canberra', 'Goldstone'];
-    for (let i = 0; i < 4; i++) {
-      const start = new Date(base.getTime() + i * 6 * 3600_000 - 2 * 3600_000);
-      const end   = new Date(start.getTime() + 5.5 * 3600_000);
-      windows.push({ start, end, station: sites[i], type: 'S-BAND UPLINK/DOWNLINK' });
-    }
-    return windows;
-  }
-
-  function formatUTC(d) {
-    return d.toISOString().substring(11, 16) + ' UTC';
-  }
-
-  function durStr(ms) {
-    const h = Math.floor(ms / 3600_000);
-    const m = Math.floor((ms % 3600_000) / 60_000);
-    return `${h}h ${m}m`;
-  }
-
-  function renderCommWindows(windows) {
-    const now  = new Date();
-    const list = document.getElementById('cw-list');
-    list.innerHTML = '';
-    windows.forEach(w => {
-      const isActive   = now >= w.start && now < w.end;
-      const isUpcoming = now < w.start;
-      const row = document.createElement('div');
-      row.className = 'cw-row' + (isActive ? ' active' : isUpcoming ? ' upcoming' : '');
-      const remaining = isActive
-        ? durStr(w.end - now) + ' left'
-        : isUpcoming ? 'in ' + durStr(w.start - now) : 'ended';
-      row.innerHTML = `
-        <div class="cw-time">${formatUTC(w.start)}</div>
-        <div class="cw-station">${w.station}</div>
-        <div class="cw-dur">${durStr(w.end - w.start)}</div>
-        <div class="cw-status ${isActive ? 'active' : 'upcoming'}">${remaining}</div>
-      `;
-      list.appendChild(row);
-    });
-  }
-
-  function signalBarsHtml(strength) {
-    // strength 0..4
-    const s = Math.min(4, Math.max(0, Math.round(strength)));
-    return `<div class="signal-bars s${s}">
-      <div class="signal-bar b1"></div>
-      <div class="signal-bar b2"></div>
-      <div class="signal-bar b3"></div>
-      <div class="signal-bar b4"></div>
-    </div>`;
-  }
-
-  function renderDishRow(name, target, rateKbps, elevation) {
-    const sig = elevation > 60 ? 4 : elevation > 30 ? 3 : elevation > 10 ? 2 : 1;
-    return `<div class="dish-row">
-      <div class="dish-name">${name}</div>
-      <div class="dish-target">${target || '<span style="color:var(--text-dim)">—</span>'}</div>
-      <div class="dish-signal">
-        ${signalBarsHtml(target ? sig : 0)}
-        <span class="dish-rate">${target ? rateKbps + ' kb/s' : ''}</span>
-      </div>
-    </div>`;
-  }
+  const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
   function parseDSNXML(xmlText) {
-    const parser = new DOMParser();
-    const doc    = parser.parseFromString(xmlText, 'text/xml');
-    const dishes = Array.from(doc.querySelectorAll('dish'));
+    const doc = new DOMParser().parseFromString(xmlText, 'text/xml');
     const result = { goldstone: [], madrid: [], canberra: [] };
+    let site = null;
 
-    dishes.forEach(dish => {
-      const name = dish.getAttribute('name') || '';
-      const site = name.startsWith('DSS-1') || name.startsWith('DSS-2') || name.startsWith('DSS-24') || name.startsWith('DSS-26') ? 'goldstone'
-                 : name.startsWith('DSS-5') || name.startsWith('DSS-6') || name.startsWith('DSS-54') || name.startsWith('DSS-65') ? 'madrid'
-                 : name.startsWith('DSS-3') || name.startsWith('DSS-4') || name.startsWith('DSS-34') || name.startsWith('DSS-43') ? 'canberra'
-                 : null;
-      if (!site) return;
+    for (const el of Array.from(doc.documentElement.children)) {
+      if (el.tagName === 'station') { site = STATION_KEY[el.getAttribute('name')] || null; continue; }
+      if (el.tagName !== 'dish' || !site) continue;
 
-      const targets = Array.from(dish.querySelectorAll('target'));
-      const upSignal   = dish.querySelector('upSignal');
-      const downSignal = dish.querySelector('downSignal');
-      const elev = parseFloat(dish.getAttribute('elevationAngle') || '0');
-      const rateKbps = downSignal
-        ? Math.round(parseFloat(downSignal.getAttribute('dataRate') || '0') / 1000)
-        : 0;
-      const targetName = targets.length
-        ? targets.map(t => t.getAttribute('name')).join(', ')
-        : null;
-
-      result[site].push({ name, targetName, rateKbps, elev });
-    });
+      const targets = Array.from(el.querySelectorAll('target'))
+        .map(t => t.getAttribute('name'))
+        .filter(n => n && !NOT_A_SPACECRAFT.includes(n.toUpperCase()));
+      const down = el.querySelector('downSignal');
+      result[site].push({
+        name:     el.getAttribute('name'),
+        targets,
+        activity: el.getAttribute('activity') || '',
+        elev:     parseFloat(el.getAttribute('elevationAngle') || '0'),
+        rateBps:  down ? parseFloat(down.getAttribute('dataRate') || '0') : 0,
+        downActive: down ? down.getAttribute('active') === 'true' : false,
+      });
+    }
     return result;
   }
 
+  function fmtRate(bps) {
+    if (!bps) return '';
+    if (bps >= 1e6) return (bps / 1e6).toFixed(1) + ' Mb/s';
+    return bps >= 1000 ? Math.round(bps / 1000) + ' kb/s' : Math.round(bps) + ' b/s';
+  }
+
+  // Bars show how high the dish points (a proxy for a clean link), and only while a downlink is active
+  function signalLevel(d) {
+    if (!d.targets.length || !d.downActive) return 0;
+    return d.elev > 60 ? 4 : d.elev > 30 ? 3 : d.elev > 10 ? 2 : 1;
+  }
+
+  function signalBarsHtml(level) {
+    return `<div class="signal-bars s${level}" aria-hidden="true"><div class="signal-bar b1"></div><div class="signal-bar b2"></div><div class="signal-bar b3"></div><div class="signal-bar b4"></div></div>`;
+  }
+
+  function dishRow(d) {
+    const tracking = d.targets.length > 0;
+    const label = tracking ? d.targets.join(', ') : (d.activity || 'Idle');
+    return `<div class="dish-row">
+      <div class="dish-name">${esc(d.name)}</div>
+      <div class="dish-target ${tracking ? '' : 'idle'}" title="${esc(label)}">${esc(label)}</div>
+      <div class="dish-signal">${signalBarsHtml(signalLevel(d))}<span class="dish-rate">${d.downActive ? fmtRate(d.rateBps) : ''}</span></div>
+    </div>`;
+  }
+
   function renderSite(siteKey, dishes) {
-    const container = document.getElementById(SITES[siteKey].id);
+    const container = document.getElementById('dishes-' + siteKey);
     const dot = document.querySelector(`#dsn-${siteKey} .site-dot`);
+    if (!container || !dot) return;
     if (!dishes.length) {
-      container.innerHTML = `<div style="color:var(--text-dim);font-size:10px;padding:4px 0">No active dishes</div>`;
+      container.innerHTML = '<div class="dsn-empty">No dishes reported</div>';
       dot.className = 'site-dot';
       return;
     }
-    const hasArtemis = dishes.some(d =>
-      d.targetName && ARTEMIS_TARGETS.some(a => d.targetName.toUpperCase().includes(a))
-    );
-    dot.className = 'site-dot ' + (hasArtemis ? 'active' : dishes.some(d => d.targetName) ? 'tracking' : '');
-    container.innerHTML = dishes
-      .slice(0, 3)
-      .map(d => renderDishRow(d.name, d.targetName, d.rateKbps, d.elev))
-      .join('');
+    const isArtemis = dishes.some(d => d.targets.some(t => ARTEMIS_TARGETS.some(a => t.toUpperCase().includes(a))));
+    const busy = dishes.some(d => d.targets.length);
+    dot.className = 'site-dot' + (isArtemis ? ' active' : busy ? ' tracking' : '');
+    // Dishes with a spacecraft first, then the rest; four rows keeps the card short
+    const sorted = [...dishes].sort((a, b) => b.targets.length - a.targets.length);
+    container.innerHTML = sorted.slice(0, 4).map(dishRow).join('');
   }
 
-  function renderFallback() {
-    // Simulated data when DSN fetch fails (realistic stand-in)
-    const fallback = {
-      goldstone: [{ name: 'DSS-24', targetName: 'ORION (ARTEMIS III)', rateKbps: 2048, elev: 42 }],
-      madrid:    [{ name: 'DSS-65', targetName: null, rateKbps: 0, elev: 8 }],
-      canberra:  [{ name: 'DSS-43', targetName: 'MAVEN', rateKbps: 512, elev: 67 }],
-    };
-    Object.keys(fallback).forEach(k => renderSite(k, fallback[k]));
-    document.getElementById('dsn-status').textContent = 'Simulated · DSN Now unavailable';
-    document.getElementById('sb-dsn-msg').textContent = 'DSN: simulated data';
-  }
+  function renderAll(data, sourceLabel) {
+    SITE_KEYS.forEach(k => renderSite(k, data[k]));
+    const all = SITE_KEYS.flatMap(k => data[k]);
+    const tracking = all.filter(d => d.targets.length).length;
+    const artemis = all.some(d => d.targets.some(t => ARTEMIS_TARGETS.some(a => t.toUpperCase().includes(a))));
 
-  async function fetchDSN() {
-    try {
-      const res  = await fetch(PROXY + encodeURIComponent(DSN_URL));
-      const json = await res.json();
-      const data = parseDSNXML(json.contents);
-      Object.keys(data).forEach(k => renderSite(k, data[k]));
-      document.getElementById('dsn-status').textContent = `Live · ${new Date().toISOString().substring(11,19)} UTC`;
-      document.getElementById('sb-dsn-msg').className = 'ok';
-      document.getElementById('sb-dsn-msg').textContent = 'DSN: live';
-    } catch (e) {
-      renderFallback();
+    const status = document.getElementById('dsn-status');
+    if (status) status.textContent = `${tracking} of ${all.length} dishes tracking`;
+    const note = document.getElementById('dsn-artemis');
+    if (note) {
+      note.classList.toggle('live', artemis);
+      note.textContent = artemis
+        ? 'An Artemis spacecraft is being tracked right now.'
+        : 'No Artemis spacecraft in flight. The next one to launch is Artemis III.';
     }
-    renderCommWindows(generateCommWindows());
+    const sb = document.getElementById('sb-dsn-msg');
+    if (sb) { sb.className = 'ok'; sb.textContent = `DSN: ${sourceLabel}, ${new Date().toISOString().substring(11, 19)} UTC`; }
+  }
+
+  function renderUnavailable() {
+    SITE_KEYS.forEach(k => {
+      const c = document.getElementById('dishes-' + k), dot = document.querySelector(`#dsn-${k} .site-dot`);
+      if (c) c.innerHTML = '<div class="dsn-empty">DSN Now is not reachable right now.</div>';
+      if (dot) dot.className = 'site-dot';
+    });
+    const status = document.getElementById('dsn-status');
+    if (status) status.textContent = 'Unavailable';
+    const sb = document.getElementById('sb-dsn-msg');
+    if (sb) { sb.className = ''; sb.textContent = 'DSN: unavailable'; }
+  }
+
+  async function fetchDirect() {
+    const res = await fetch(DSN_URL + '?r=' + Math.floor(Date.now() / 5000), { signal: AbortSignal.timeout(9000) });
+    if (!res.ok) throw new Error('http ' + res.status);
+    return parseDSNXML(await res.text());
+  }
+
+  // start() is safe to call again when the user's tier changes: one timer, latest config wins
+  let timer = null;
+  let cfg = { isLive: false, callEdge: null };
+
+  async function poll() {
+    try {
+      if (cfg.isLive && cfg.callEdge) {
+        try {
+          const data = await cfg.callEdge('dsn');
+          if (data?.xml) { renderAll(parseDSNXML(data.xml), 'live via edge'); return; }
+        } catch { /* fall through to direct */ }
+      }
+      renderAll(await fetchDirect(), 'live');
+    } catch (e) {
+      console.warn('DSN fetch failed', e);
+      renderUnavailable();
+    }
   }
 
   function start(isLive, callEdge) {
-    Object.keys(SITES).forEach(k => {
-      const dot = document.querySelector(`#dsn-${k} .site-dot`);
-      if (dot) dot.className = 'site-dot';
-    });
-
-    async function dsnFetch() {
-      if (isLive && callEdge) {
-        try {
-          const data = await callEdge('dsn');
-          if (data?.xml) {
-            const parsed = parseDSNXML(data.xml);
-            Object.keys(parsed).forEach(k => renderSite(k, parsed[k]));
-            document.getElementById('dsn-status').textContent = `Live · ${new Date().toISOString().substring(11,19)} UTC`;
-            document.getElementById('sb-dsn-msg').className   = 'ok';
-            document.getElementById('sb-dsn-msg').textContent = 'DSN: live';
-            renderCommWindows(generateCommWindows());
-            return;
-          }
-        } catch {}
-      }
-      // Free tier or fallback
-      fetchDSN();
-    }
-
-    dsnFetch();
-    setInterval(dsnFetch, 30_000);
-    setInterval(() => renderCommWindows(generateCommWindows()), 60_000);
+    cfg = { isLive: !!isLive, callEdge: callEdge || null };
+    poll();
+    if (!timer) timer = setInterval(poll, 30_000);
   }
 
-  return { start };
+  return { start, parseDSNXML };
 })();

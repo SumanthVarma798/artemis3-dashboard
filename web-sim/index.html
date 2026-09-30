@@ -2,131 +2,161 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Artemis III · Mission Control</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Spectral:wght@400;500;600;800&family=Barlow+Condensed:wght@500;600;700&display=swap" />
-  <link rel="stylesheet" href="index.css?v=5" />
-  <link rel="stylesheet" href="story.css?v=5" />
-  <link rel="stylesheet" href="rockets.css?v=5" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="color-scheme" content="dark" />
+  <meta name="theme-color" content="#0a0c10" />
+  <meta name="description" content="Unofficial Artemis program dashboard: Artemis III Earth-orbit docking test, the road to the first landing, live Deep Space Network and launch data." />
+  <title>Artemis Mission Control</title>
+  <link rel="preload" href="assets/fonts/Geist.woff2" as="font" type="font/woff2" crossorigin />
+  <link rel="preload" href="assets/fonts/GeistMono.woff2" as="font" type="font/woff2" crossorigin />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@phosphor-icons/web@2.1.1/src/regular/style.css" />
+  <link rel="stylesheet" href="index.css?v=14" />
+  <link rel="stylesheet" href="story.css?v=14" />
+  <link rel="stylesheet" href="rockets.css?v=14" />
   <script type="module" src="https://cdn.jsdelivr.net/npm/@google/model-viewer@3.5.0/dist/model-viewer.min.js"></script>
 </head>
 <body>
+  <a class="skip-link" href="#main">Skip to dashboard</a>
+
   <!-- Top bar -->
   <header id="topbar">
     <div class="tb-left">
-      <span class="logo">⬡ NASA · MCC-H</span>
-      <span class="mission-name">ARTEMIS III</span>
-      <span id="mission-phase-badge" class="phase-badge">PRE-LAUNCH</span>
-      <nav id="exhibit-nav" class="tb-nav"><!-- Story / Hangar buttons mount here --></nav>
+      <h1 class="brand"><span class="brand-mark" aria-hidden="true"></span>Artemis <span class="brand-sub">Mission Control</span></h1>
+      <span id="mission-phase-badge" class="phase-badge" title="Current mission status">Pre-launch</span>
+      <nav id="exhibit-nav" class="tb-nav" aria-label="Exhibits"><!-- Story / Hangar buttons mount here --></nav>
     </div>
-    <div class="tb-center">
-      <div class="countdown-block">
-        <div class="cd-label" id="cd-label">T-MINUS</div>
-        <div id="countdown" class="countdown">--:--:--:--</div>
-      </div>
+
+    <div class="tb-center countdown-block" role="timer" aria-live="off">
+      <div class="cd-label" id="cd-label">Artemis III · NET Jun 2027</div>
+      <div id="countdown" class="countdown">---</div>
     </div>
+
     <div class="tb-right">
       <span class="utc-clock" id="utc-clock">--:--:-- UTC</span>
       <!-- auth buttons injected by auth.js -->
     </div>
   </header>
 
-  <!-- Auth modal injected by auth.js -->
-
   <!-- Main grid -->
-  <main id="main-grid">
+  <main id="main" class="shell">
 
-    <!-- Panel 1: 3D Orbital View -->
-    <section class="panel" id="panel-orbital">
-      <div class="panel-header">
-        <span class="panel-title">ORBITAL TRAJECTORY</span>
-        <span class="panel-sub" id="orion-state">Fetching ephemeris…</span>
+    <!-- Orbital stage -->
+    <section class="card stage" id="panel-orbital" aria-label="3D orbital view">
+      <div class="card-head">
+        <div class="mode-tabs" id="mode-tabs" role="tablist" aria-label="Scene">
+          <button role="tab" class="mode-tab active" data-mode="a3" aria-selected="true">Artemis III</button>
+          <button role="tab" class="mode-tab" data-mode="a2" aria-selected="false">Artemis II replay</button>
+        </div>
+        <span class="card-sub" id="orion-state">Loading ephemeris</span>
       </div>
-      <canvas id="orbital-canvas"></canvas>
-      <div class="orbital-legend">
-        <span class="leg-dot earth"></span>Earth
-        <span class="leg-dot moon"></span>Moon
-        <span class="leg-dot orion"></span>Orion
-        <span class="leg-dot starship"></span>Starship HLS
+
+      <div class="stage-view" id="stage-view">
+        <canvas id="orbital-canvas" aria-label="Interactive 3D scene. Drag to rotate, scroll to zoom."></canvas>
+        <div class="stage-caption" id="stage-caption" aria-live="polite"></div>
       </div>
+
+      <div class="stage-foot">
+        <div class="legend" id="orbital-legend"></div>
+        <a class="orbital-tex-credit" href="https://www.solarsystemscope.com/textures/" target="_blank" rel="noopener">Textures: Solar System Scope, CC BY 4.0</a>
+      </div>
+
       <div id="orbital-telemetry" class="telem-strip">
-        <div class="telem-item"><div class="tl-label">DIST TO MOON</div><div class="tl-val" id="tl-dist-moon">—</div></div>
-        <div class="telem-item"><div class="tl-label">DIST TO EARTH</div><div class="tl-val" id="tl-dist-earth">—</div></div>
-        <div class="telem-item"><div class="tl-label">VELOCITY</div><div class="tl-val" id="tl-vel">—</div></div>
-        <div class="telem-item"><div class="tl-label">PHASE</div><div class="tl-val" id="tl-phase">—</div></div>
+        <div class="telem-item"><div class="tl-label" id="tl-l1">Moon distance</div><div class="tl-val" id="tl-v1">-</div></div>
+        <div class="telem-item"><div class="tl-label" id="tl-l2">Light delay</div><div class="tl-val" id="tl-v2">-</div></div>
+        <div class="telem-item"><div class="tl-label" id="tl-l3">Orbit</div><div class="tl-val" id="tl-v3">-</div></div>
+        <div class="telem-item"><div class="tl-label" id="tl-l4">Step</div><div class="tl-val" id="tl-v4">-</div></div>
       </div>
     </section>
 
-    <!-- Right column -->
-    <div id="right-col">
+    <!-- Right rail: one scroll container for every card -->
+    <aside id="right-col" class="rail" aria-label="Mission details">
 
-      <!-- Panel 2: DSN Comm Windows -->
-      <section class="panel" id="panel-dsn">
-        <div class="panel-header">
-          <span class="panel-title">DEEP SPACE NETWORK</span>
-          <span class="panel-sub" id="dsn-status">Polling DSN Now…</span>
+      <section class="card" id="panel-mission" style="--i:1">
+        <div class="card-head">
+          <h2 class="card-title">Where the program stands</h2>
+          <span class="card-sub" id="mission-checked"></span>
+        </div>
+        <div id="mission-body"></div>
+      </section>
+
+      <section class="card" id="panel-timeline" style="--i:2">
+        <div class="card-head">
+          <h2 class="card-title">Artemis III flight plan</h2>
+          <span class="card-sub">Earth orbit, about 2 weeks</span>
+        </div>
+        <ol id="timeline-list"></ol>
+      </section>
+
+      <section class="card" id="panel-readiness" style="--i:3">
+        <div class="card-head">
+          <h2 class="card-title">Hardware readiness</h2>
+          <span class="card-sub" id="readiness-sub"></span>
+        </div>
+        <ul id="readiness-list"></ul>
+      </section>
+
+      <section class="card" id="panel-dsn" style="--i:4">
+        <div class="card-head">
+          <h2 class="card-title">Deep Space Network</h2>
+          <span class="card-sub" id="dsn-status">Polling DSN Now</span>
         </div>
         <div id="dsn-sites">
           <div class="dsn-site" id="dsn-goldstone">
-            <div class="site-header"><span class="site-dot"></span><span class="site-name">Goldstone (DSS-24/26)</span><span class="site-loc">California, USA</span></div>
+            <div class="site-header"><span class="site-dot"></span><span class="site-name">Goldstone</span><span class="site-loc">California, USA</span></div>
             <div class="dsn-dishes" id="dishes-goldstone"></div>
           </div>
           <div class="dsn-site" id="dsn-madrid">
-            <div class="site-header"><span class="site-dot"></span><span class="site-name">Madrid (DSS-54/65)</span><span class="site-loc">Spain</span></div>
+            <div class="site-header"><span class="site-dot"></span><span class="site-name">Madrid</span><span class="site-loc">Spain</span></div>
             <div class="dsn-dishes" id="dishes-madrid"></div>
           </div>
           <div class="dsn-site" id="dsn-canberra">
-            <div class="site-header"><span class="site-dot"></span><span class="site-name">Canberra (DSS-34/43)</span><span class="site-loc">Australia</span></div>
+            <div class="site-header"><span class="site-dot"></span><span class="site-name">Canberra</span><span class="site-loc">Australia</span></div>
             <div class="dsn-dishes" id="dishes-canberra"></div>
           </div>
         </div>
-        <div id="dsn-comm-windows">
-          <div class="cw-header">ARTEMIS III COMM WINDOWS (next 24 h)</div>
-          <div id="cw-list"></div>
-        </div>
+        <p class="dsn-note" id="dsn-artemis">No Artemis spacecraft in flight. The next one to launch is Artemis III.</p>
       </section>
 
-      <!-- Panel: Launch Providers (live SpaceX + Blue Origin) -->
-      <section class="panel" id="panel-providers">
-        <div class="panel-header">
-          <span class="panel-title">LAUNCH PROVIDERS</span>
-          <span class="panel-sub" id="providers-status">Fetching live launches…</span>
+      <section class="card" id="panel-providers" style="--i:5">
+        <div class="card-head">
+          <h2 class="card-title">Launch providers</h2>
+          <span class="card-sub" id="providers-status">Fetching live launches</span>
         </div>
         <div id="providers-list"></div>
       </section>
 
-      <!-- Panel 3: Mission Timeline -->
-      <section class="panel" id="panel-timeline">
-        <div class="panel-header">
-          <span class="panel-title">MISSION TIMELINE</span>
-          <span class="panel-sub">Artemis III · Human Landing System</span>
+      <section class="card" id="panel-roman" style="--i:6">
+        <div class="card-head">
+          <h2 class="card-title">Roman Space Telescope</h2>
+          <span class="card-sub" id="roman-status">Fetching images</span>
         </div>
-        <div id="timeline-list"></div>
+        <div id="roman-list"></div>
       </section>
+      <dialog id="roman-dialog"><figure><img alt=""><figcaption></figcaption></figure></dialog>
 
-    </div>
+    </aside>
   </main>
 
   <!-- Status bar -->
   <footer id="statusbar">
-    <span id="sb-dsn-msg">DSN: connecting…</span>
-    <span id="sb-horizons-msg">Horizons: idle</span>
-    <span id="sb-last-update">Last update: —</span>
+    <span id="sb-dsn-msg">DSN: connecting</span>
+    <span id="sb-horizons-msg">Ephemeris: idle</span>
+    <span id="sb-last-update">Last update: none yet</span>
+    <span class="sb-note">Unofficial fan project. Not affiliated with NASA. Data: NASA, JPL, The Space Devs.</span>
   </footer>
 
   <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
-  <script src="config.js?v=5"></script>
-  <script src="orbital3d.js?v=5"></script>
-  <script src="dsn.js?v=5"></script>
-  <script src="timeline.js?v=5"></script>
-  <script src="providers.js?v=5"></script>
-  <script src="auth.js?v=5"></script>
-  <script src="nasa-onboarding.js?v=5"></script>
-  <script src="story.js?v=5"></script>
-  <script src="rockets.js?v=5"></script>
-  <script src="app.js?v=5"></script>
+  <script src="config.js?v=14"></script>
+  <script src="orbital3d.js?v=14"></script>
+  <script src="dsn.js?v=14"></script>
+  <script src="mission.js?v=14"></script>
+  <script src="providers.js?v=14"></script>
+  <script src="roman.js?v=14"></script>
+  <script src="auth.js?v=14"></script>
+  <script src="nasa-onboarding.js?v=14"></script>
+  <script src="story.js?v=14"></script>
+  <script src="rockets.js?v=14"></script>
+  <script src="app.js?v=14"></script>
 </body>
 </html>

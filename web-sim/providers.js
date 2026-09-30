@@ -11,8 +11,8 @@ const Providers = (() => {
 
   // LL2 launch-service-provider IDs
   const AGENCIES = [
-    { id: 121, key: 'spacex',     name: 'SPACEX',      sub: 'Starship HLS · Artemis III', cls: 'spacex' },
-    { id: 141, key: 'blueorigin', name: 'BLUE ORIGIN', sub: 'Blue Moon · Artemis V',      cls: 'blueorigin' },
+    { id: 121, key: 'spacex',     name: 'SpaceX',      sub: 'Starship, Artemis III test article', cls: 'spacex' },
+    { id: 141, key: 'blueorigin', name: 'Blue Origin', sub: 'New Glenn, Blue Moon landers', cls: 'blueorigin' },
   ];
 
   async function fetchOne(url) {
@@ -79,7 +79,7 @@ const Providers = (() => {
     if      (s / 86400 >= 1.5) phrase = `${Math.round(s / 86400)} days`;
     else if (s / 3600  >= 1)   phrase = `${Math.round(s / 3600)} h`;
     else                       phrase = `${Math.max(1, Math.round(s / 60))} min`;
-    return past ? `${phrase} ago` : `T-minus ${phrase}`;
+    return past ? `${phrase} ago` : `in ${phrase}`;
   }
 
   function absDate(netStr) {
@@ -143,22 +143,22 @@ const Providers = (() => {
     const statusEl = document.getElementById('providers-status');
     if (statusEl) {
       const when = meta.cachedAt ? new Date(meta.cachedAt).toISOString().substring(11, 16) + ' UTC' : '';
-      statusEl.textContent = meta.stale ? `cached ${when} (offline)` : `Launch Library 2 · ${when}`;
+      statusEl.textContent = meta.stale ? `Cached ${when}, offline` : `Launch Library 2, ${when}`;
       statusEl.className = 'panel-sub';
     }
   }
 
   async function init() {
     const statusEl = document.getElementById('providers-status');
-    if (statusEl) statusEl.textContent = 'Fetching live launches…';
+    if (statusEl) statusEl.textContent = 'Fetching live launches';
     try {
       const { data, ...meta } = await load();
       render(data, meta);
     } catch (e) {
       console.warn('Providers fetch failed', e);
       const list = document.getElementById('providers-list');
-      if (list) list.innerHTML = `<div class="prov-empty">Live launch data unavailable.<br><span>The Space Devs API may be rate-limited — retry shortly.</span></div>`;
-      if (statusEl) statusEl.textContent = 'unavailable';
+      if (list) list.innerHTML = `<div class="prov-empty">Live launch data is unavailable.<br><span>The Space Devs API may be rate-limited. Try again shortly.</span></div>`;
+      if (statusEl) statusEl.textContent = 'Unavailable';
     }
   }
 

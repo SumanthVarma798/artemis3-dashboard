@@ -51,31 +51,32 @@ const NasaOnboarding = (() => {
     const el = document.createElement('div');
     el.id        = 'nasa-onboard-modal';
     el.className = 'modal nasa-onboard';
+    el.setAttribute('role', 'dialog'); el.setAttribute('aria-modal', 'true'); el.setAttribute('aria-label', 'NASA API key setup');
 
     el.innerHTML = `
       <div class="modal-box onboard-box">
         <div class="onboard-header">
-          <div class="onboard-icon">⬡</div>
+          <div class="onboard-icon"><i class="ph ph-key" aria-hidden="true"></i></div>
           <div>
-            <div class="onboard-title">NASA API KEY SETUP</div>
-            <div class="onboard-sub">One-time setup · takes about 60 seconds</div>
+            <div class="onboard-title">NASA API key setup</div>
+            <div class="onboard-sub">One-time setup, about 60 seconds</div>
           </div>
         </div>
 
         <div class="onboard-step" id="step-get-key">
           <div class="onboard-notice info">
-            <span class="notice-icon">ℹ</span>
+            <span class="notice-icon"><i class="ph ph-info" aria-hidden="true"></i></span>
             Live telemetry requires a NASA Open API key. They're <strong>free</strong> and arrive in seconds.
           </div>
           <div class="onboard-instructions">
-            <div class="step-row"><span class="step-num">1</span><span>Click the button below — NASA's signup page opens in a new tab</span></div>
+            <div class="step-row"><span class="step-num">1</span><span>Click the button below. NASA's signup page opens in a new tab</span></div>
             <div class="step-row"><span class="step-num">2</span><span>Fill in your name and email on their page and submit</span></div>
             <div class="step-row"><span class="step-num">3</span><span>Copy the API key from the page or confirmation email</span></div>
             <div class="step-row"><span class="step-num">4</span><span>Paste it below and hit Validate</span></div>
           </div>
 
           <button class="choice-btn primary open-nasa-btn" id="btn-open-nasa">
-            <span class="choice-icon">🚀</span>
+            <span class="choice-icon"><i class="ph ph-rocket-launch" aria-hidden="true"></i></span>
             <div>
               <div class="choice-title">Open NASA API Signup</div>
               <div class="choice-desc">Opens api.nasa.gov in a new tab</div>
@@ -83,25 +84,25 @@ const NasaOnboarding = (() => {
           </button>
 
           <div class="auth-field key-field" style="margin-top:18px">
-            <label>NASA API KEY  <span id="attempt-counter" class="attempt-count"></span></label>
+            <label for="ob-key">NASA API key <span id="attempt-counter" class="attempt-count"></span></label>
             <div class="key-input-row">
-              <input type="text" id="ob-key" placeholder="Paste your key here…" autocomplete="off" spellcheck="false" />
-              <button class="key-validate-btn" id="btn-validate">VALIDATE</button>
+              <input type="text" id="ob-key" placeholder="Paste your key here" autocomplete="off" spellcheck="false" />
+              <button class="key-validate-btn" id="btn-validate">Validate</button>
             </div>
           </div>
           <div id="key-error"   class="auth-error hidden"></div>
           <div id="key-success" class="auth-success hidden"></div>
 
-          <button class="onboard-skip" id="btn-skip">Skip · use DEMO_KEY (30 req/hour limit)</button>
+          <button class="onboard-skip" id="btn-skip">Skip and use DEMO_KEY (30 requests per hour)</button>
         </div>
 
         <div class="onboard-step hidden" id="step-demo-fallback">
           <div class="onboard-notice danger">
-            <span class="notice-icon">⚠</span>
+            <span class="notice-icon"><i class="ph ph-warning" aria-hidden="true"></i></span>
             Key validation failed ${MAX_ATTEMPTS} times. Falling back to DEMO_KEY.
           </div>
           <div class="onboard-notice warn" style="margin-top:10px">
-            <span class="notice-icon">ℹ</span>
+            <span class="notice-icon"><i class="ph ph-info" aria-hidden="true"></i></span>
             DEMO_KEY is rate-limited to <strong>30 req/hour</strong>. You can update your key later.
           </div>
           <div class="onboard-actions centered">
@@ -138,17 +139,17 @@ const NasaOnboarding = (() => {
 
       if (!key) { showErr(errEl, 'Please paste your NASA API key first.'); return; }
 
-      setLoading(btn, true, 'VALIDATING…');
+      setLoading(btn, true, 'Validating...');
       errEl.classList.add('hidden');
       sucEl.classList.add('hidden');
 
       const result = await validateKey(key);
-      setLoading(btn, false, 'VALIDATE');
+      setLoading(btn, false, 'Validate');
 
       if (result.valid || result.rateLimited) {
         sucEl.textContent = result.rateLimited
-          ? '✓ Key accepted (currently rate-limited — will work when quota resets).'
-          : '✓ Key validated!';
+          ? 'Key accepted. It is rate-limited right now and will work when the quota resets.'
+          : 'Key validated.';
         sucEl.classList.remove('hidden');
         input.disabled = true;
         btn.disabled   = true;
@@ -166,8 +167,8 @@ const NasaOnboarding = (() => {
       }
 
       const remaining = MAX_ATTEMPTS - attempts;
-      const reason = result.reason === 'invalid' ? 'Key not recognized by NASA — check it was copied correctly.'
-                   : result.reason === 'network' ? 'Network error — check your connection.'
+      const reason = result.reason === 'invalid' ? 'Key not recognized by NASA. Check it was copied correctly.'
+                   : result.reason === 'network' ? 'Network error. Check your connection.'
                    : `Validation failed (HTTP ${result.status || '?'}).`;
       showErr(errEl, `${reason} ${remaining} attempt${remaining !== 1 ? 's' : ''} remaining.`);
       input.focus();

@@ -1,0 +1,16 @@
+Planetary & star-field textures
+================================
+
+Source : Solar System Scope — https://www.solarsystemscope.com/textures/
+License : Creative Commons Attribution 4.0 International (CC BY 4.0)
+          https://creativecommons.org/licenses/by/4.0/
+
+Files (downloaded and resized/renamed for this project):
+  earth_day.jpg        ← 2k_earth_daymap.jpg
+  earth_night.jpg      ← 2k_earth_nightmap.jpg
+  earth_clouds.jpg     ← 2k_earth_clouds.jpg
+  moon.jpg             ← 2k_moon.jpg
+  stars_milky_way.jpg  ← 8k_stars_milky_way.jpg
+
+Attribution displayed in-app (orbital panel footer) and here, per CC BY 4.0.
+"Textures © Solar System Scope (solarsystemscope.com), CC BY 4.0"

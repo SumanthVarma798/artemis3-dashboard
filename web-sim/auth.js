@@ -111,8 +111,8 @@ const Auth = (() => {
   function renderDemoMode() {
     const btn = document.getElementById('btn-auth');
     if (btn) {
-      btn.textContent = 'DEMO';
-      btn.title = 'Running in demo mode — configure Supabase to enable accounts';
+      btn.textContent = 'Demo';
+      btn.title = 'Running in demo mode. Configure Supabase to enable accounts.';
       btn.style.color = 'var(--warn)';
     }
   }
@@ -126,7 +126,7 @@ const Auth = (() => {
     const btn = document.createElement('button');
     btn.id        = 'btn-auth';
     btn.className = 'icon-btn auth-btn';
-    btn.textContent = 'SIGN IN';
+    btn.textContent = 'Sign in';
     btn.title = 'Sign in to your account';
     btn.addEventListener('click', () => showAuthModal());
     topRight.insertBefore(btn, topRight.firstChild);
@@ -135,7 +135,7 @@ const Auth = (() => {
     const badge = document.createElement('span');
     badge.id        = 'tier-badge';
     badge.className = 'tier-badge';
-    badge.textContent = 'FREE';
+    badge.textContent = 'Free';
     topRight.insertBefore(badge, btn);
   }
 
@@ -146,17 +146,17 @@ const Auth = (() => {
 
     if (session) {
       const email = session.user.email;
-      btn.textContent = email.split('@')[0].toUpperCase();
-      btn.title = `Signed in as ${email} · Click to sign out`;
+      btn.textContent = email.split('@')[0];
+      btn.title = `Signed in as ${email}. Click to sign out.`;
       btn.onclick = () => {
         if (confirm(`Sign out of ${email}?`)) signOut();
       };
-      badge.textContent = userTier.toUpperCase();
+      badge.textContent = userTier[0].toUpperCase() + userTier.slice(1);
       badge.className   = `tier-badge tier-${userTier}`;
     } else {
-      btn.textContent = 'SIGN IN';
+      btn.textContent = 'Sign in';
       btn.onclick     = () => showAuthModal();
-      badge.textContent = 'FREE';
+      badge.textContent = 'Free';
       badge.className   = 'tier-badge';
     }
   }
@@ -176,54 +176,55 @@ const Auth = (() => {
     const modal = document.createElement('div');
     modal.id        = 'auth-modal';
     modal.className = 'modal';
+    modal.setAttribute('role', 'dialog'); modal.setAttribute('aria-modal', 'true'); modal.setAttribute('aria-label', 'Account');
     modal.innerHTML = `
       <div class="modal-box auth-modal-box">
         <div class="auth-tabs">
-          <button class="auth-tab active" data-tab="signin">Sign In</button>
-          <button class="auth-tab" data-tab="signup">Create Account</button>
+          <button class="auth-tab active" data-tab="signin">Sign in</button>
+          <button class="auth-tab" data-tab="signup">Create account</button>
         </div>
 
         <div class="auth-panel" id="auth-signin">
-          <p class="auth-sub">Access your Artemis III mission dashboard.</p>
+          <p class="auth-sub">Sign in to your Artemis dashboard.</p>
           <div class="auth-field">
-            <label>EMAIL</label>
+            <label for="signin-email">Email</label>
             <input type="email" id="signin-email" placeholder="you@example.com" autocomplete="email" />
           </div>
           <div class="auth-field">
-            <label>PASSWORD</label>
+            <label for="signin-password">Password</label>
             <input type="password" id="signin-password" placeholder="••••••••" autocomplete="current-password" />
           </div>
           <div id="signin-error" class="auth-error hidden"></div>
-          <button id="btn-signin" class="auth-submit">SIGN IN</button>
+          <button id="btn-signin" class="auth-submit">Sign in</button>
         </div>
 
         <div class="auth-panel hidden" id="auth-signup">
-          <p class="auth-sub">Create a free account. Upgrade to Pro for live telemetry.</p>
+          <p class="auth-sub">Create a free account. Pro adds live JPL Horizons data.</p>
           <div class="auth-field">
-            <label>EMAIL</label>
+            <label for="signup-email">Email</label>
             <input type="email" id="signup-email" placeholder="you@example.com" autocomplete="email" />
           </div>
           <div class="auth-field">
-            <label>PASSWORD</label>
+            <label for="signup-password">Password</label>
             <input type="password" id="signup-password" placeholder="Min. 8 characters" autocomplete="new-password" />
           </div>
           <div id="signup-error" class="auth-error hidden"></div>
           <div id="signup-success" class="auth-success hidden"></div>
-          <button id="btn-signup" class="auth-submit">CREATE ACCOUNT</button>
+          <button id="btn-signup" class="auth-submit">Create account</button>
         </div>
 
         <div class="auth-tier-info">
           <div class="tier-row">
             <span class="tier-name free">FREE</span>
-            <span class="tier-features">Countdown · Timeline · Static orbital</span>
+            <span class="tier-features">Countdown, flight plan, 3D scenes, live DSN</span>
           </div>
           <div class="tier-row">
             <span class="tier-name pro">PRO</span>
-            <span class="tier-features">Live JPL Horizons · DSN real-time · Full telemetry</span>
+            <span class="tier-features">Live JPL Horizons through your own NASA API key</span>
           </div>
         </div>
 
-        <button class="modal-close" id="auth-close">✕</button>
+        <button class="modal-close" id="auth-close" aria-label="Close"><i class="ph ph-x" aria-hidden="true"></i></button>
       </div>
     `;
 
@@ -288,7 +289,7 @@ const Auth = (() => {
 
   function setAuthLoading(btn, loading) {
     btn.disabled     = loading;
-    btn.textContent  = loading ? 'LOADING…' : btn.id === 'btn-signin' ? 'SIGN IN' : 'CREATE ACCOUNT';
+    btn.textContent  = loading ? 'Working...' : btn.id === 'btn-signin' ? 'Sign in' : 'Create account';
   }
 
   return { init, signIn, signUp, signOut, hasFeature, getTier, getSession, callEdge };

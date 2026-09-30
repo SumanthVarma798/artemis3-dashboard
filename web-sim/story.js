@@ -1,1190 +1,738 @@
-/* ═══════════════════════════════════════════════
-   STORY MODE — Artemis III Mission Explorer
-   7 scenes, each with animated canvas visual
-   ═══════════════════════════════════════════════ */
+/* ═══════════════════════════════════════════════════════════════════════════
+   STORY MODE: how Artemis got here and what happens next.
+   Eight chapters, each with a NASA photograph behind it, a canvas (or 3D model) visual and verified facts.
+   Facts last checked 2026-09-30 (NASA, Wikipedia, Ars Technica). Update SCENES when the schedule moves.
+   ═══════════════════════════════════════════════════════════════════════════ */
 
 const StoryMode = (() => {
 
-  // ─── Shared canvas drawing utilities ───────────────────────────────────────
+  const reduce = window.matchMedia('(prefers-reduced-motion: reduce)');
+  const MONO = "'Geist Mono', ui-monospace, Menlo, monospace";
+  const SANS = "'Geist', ui-sans-serif, system-ui, sans-serif";
+  const COPPER = '232,137,90';     // the one accent, as an rgb triplet for canvas alpha work
+  const WARM   = '214,200,172';    // Apollo-era neutral
+  const COOL   = '170,186,210';    // everything else
 
-  function star(ctx, x, y, r, color) {
-    ctx.beginPath();
-    ctx.arc(x, y, r, 0, Math.PI * 2);
-    ctx.fillStyle = color;
-    ctx.fill();
-  }
+  // NASA Image and Video Library, keyless. Large rendition of a known asset id.
+  const nasaImg = id => `https://images-assets.nasa.gov/image/${encodeURIComponent(id)}/${encodeURIComponent(id)}~large.jpg`;
 
-  function drawStarfield(ctx, W, H, seed = 42) {
-    const rng = mulberry32(seed);
-    const colors = ['rgba(255,255,255,', 'rgba(180,210,255,', 'rgba(255,240,200,'];
-    for (let i = 0; i < 320; i++) {
-      const x  = rng() * W;
-      const y  = rng() * H;
-      const r  = rng() * 1.2 + 0.2;
-      const a  = rng() * 0.6 + 0.3;
-      const c  = colors[Math.floor(rng() * colors.length)];
-      star(ctx, x, y, r, c + a + ')');
-    }
-  }
-
+  // ── Canvas utilities ───────────────────────────────────────────────────────
   function mulberry32(seed) {
     let s = seed;
     return () => { s |= 0; s = s + 0x6D2B79F5 | 0; let t = Math.imul(s ^ s >>> 15, 1 | s); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
   }
-
-  function drawGlowCircle(ctx, x, y, r, color, glowR, glowColor) {
-    const g = ctx.createRadialGradient(x, y, r * 0.3, x, y, glowR);
-    g.addColorStop(0, glowColor.replace(')', ',0.25)').replace('rgb', 'rgba'));
-    g.addColorStop(1, 'transparent');
-    ctx.beginPath(); ctx.arc(x, y, glowR, 0, Math.PI * 2);
-    ctx.fillStyle = g; ctx.fill();
-    ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2);
-    ctx.fillStyle = color; ctx.fill();
+  const lerp = (a, b, t) => a + (b - a) * t;
+  const clamp01 = t => Math.max(0, Math.min(1, t));
+  const ease = t => { t = clamp01(t); return t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2; };
+  const smooth = t => { t = clamp01(t); return t * t * (3 - 2 * t); };
+  function track(keys, t) {
+    if (t <= keys[0][0]) return keys[0][1];
+    for (let i = 1; i < keys.length; i++) {
+      if (t <= keys[i][0]) { const [t0, v0] = keys[i - 1], [t1, v1] = keys[i]; return lerp(v0, v1, smooth((t - t0) / (t1 - t0))); }
+    }
+    return keys[keys.length - 1][1];
   }
 
-  function lerp(a, b, t) { return a + (b - a) * t; }
-  function easeInOut(t) { return t < 0.5 ? 2*t*t : -1+(4-2*t)*t; }
+  // Starfields are expensive to redraw every frame, so each (size, seed) is drawn once to an offscreen canvas
+  const starCache = new Map();
+  function drawStarfield(ctx, W, H, seed = 42) {
+    const dpr = window.devicePixelRatio || 1, key = `${W}x${H}x${seed}x${dpr}`;
+    let c = starCache.get(key);
+    if (!c) {
+      c = document.createElement('canvas'); c.width = W * dpr; c.height = H * dpr;
+      const g = c.getContext('2d'); g.scale(dpr, dpr);
+      const rng = mulberry32(seed), cols = ['255,255,255', '180,210,255', '255,240,200'];
+      for (let i = 0; i < 280; i++) {
+        g.beginPath(); g.arc(rng() * W, rng() * H, rng() * 1.1 + 0.2, 0, Math.PI * 2);
+        g.fillStyle = `rgba(${cols[Math.floor(rng() * 3)]},${rng() * 0.55 + 0.25})`; g.fill();
+      }
+      if (starCache.size > 12) starCache.clear();
+      starCache.set(key, c);
+    }
+    ctx.drawImage(c, 0, 0, W, H);
+  }
 
-  // ─── Scene definitions ──────────────────────────────────────────────────────
+  function text(ctx, str, x, y, { size = 11, color = `rgba(${COOL},0.8)`, align = 'left', weight = 400, font = MONO } = {}) {
+    ctx.font = `${weight} ${size}px ${font}`; ctx.fillStyle = color; ctx.textAlign = align; ctx.fillText(str, x, y);
+  }
 
+  function disc(ctx, x, y, r, stops, rim) {
+    const g = ctx.createRadialGradient(x - r * 0.3, y - r * 0.3, r * 0.1, x, y, r);
+    stops.forEach(([o, c]) => g.addColorStop(o, c));
+    ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fillStyle = g; ctx.fill();
+    if (rim) { const a = ctx.createRadialGradient(x, y, r, x, y, r * 1.22); a.addColorStop(0, rim); a.addColorStop(1, 'transparent'); ctx.beginPath(); ctx.arc(x, y, r * 1.22, 0, Math.PI * 2); ctx.fillStyle = a; ctx.fill(); }
+  }
+  const earth = (ctx, x, y, r) => disc(ctx, x, y, r, [[0, '#4d8fd1'], [0.45, '#1f5a9e'], [0.85, '#0a2c5e'], [1, '#05152e']], 'rgba(110,170,255,0.28)');
+  const moon  = (ctx, x, y, r) => disc(ctx, x, y, r, [[0, '#d6cfc4'], [0.6, '#a39b91'], [1, '#6f6a62']]);
+
+  function bez(p0, c1, c2, p1, t) {
+    const m = 1 - t, a = m * m * m, b = 3 * m * m * t, c = 3 * m * t * t, d = t * t * t;
+    return [a * p0[0] + b * c1[0] + c * c2[0] + d * p1[0], a * p0[1] + b * c1[1] + c * c2[1] + d * p1[1]];
+  }
+
+  // Small top-down vehicle glyphs for the docking scene. Origin is the vehicle center, +x is "forward".
+  function vehicle(ctx, kind, x, y, ang, s, alpha) {
+    if (alpha <= 0.01) return;
+    ctx.save(); ctx.translate(x, y); ctx.rotate(ang); ctx.scale(s, s); ctx.globalAlpha = alpha;
+    const fill = c => { ctx.fillStyle = c; ctx.fill(); };
+    if (kind === 'orion') {
+      ctx.fillStyle = 'rgba(120,140,255,0.85)'; [-1, 1].forEach(sd => { ctx.fillRect(-4, sd * 17 - 2.5, 9, 5); ctx.fillRect(-4, sd * 7.5 - 2.5, 9, 5); }); // solar wings
+      ctx.fillStyle = '#aab2bb'; ctx.fillRect(-12, -6, 12, 12);                                                                           // service module
+      ctx.beginPath(); ctx.moveTo(0, -8); ctx.lineTo(13, -3.5); ctx.lineTo(13, 3.5); ctx.lineTo(0, 8); ctx.closePath(); fill('#eef1f4');     // capsule
+    } else if (kind === 'blue') {
+      ctx.fillStyle = '#6b8fb3'; ctx.fillRect(-16, -9, 11, 18);
+      ctx.fillStyle = '#e2e8ef'; ctx.fillRect(-5, -8, 15, 16);
+      ctx.beginPath(); ctx.moveTo(10, -8); ctx.lineTo(17, -3.5); ctx.lineTo(17, 3.5); ctx.lineTo(10, 8); ctx.closePath(); fill('#e2e8ef');
+    } else { // starship test article
+      const g = ctx.createLinearGradient(0, -8, 0, 8); g.addColorStop(0, '#9aa3ab'); g.addColorStop(0.5, '#f0f3f5'); g.addColorStop(1, '#8d969e');
+      ctx.fillStyle = g; ctx.fillRect(-28, -7.5, 44, 15);
+      ctx.beginPath(); ctx.moveTo(16, -7.5); ctx.quadraticCurveTo(30, -4, 33, 0); ctx.quadraticCurveTo(30, 4, 16, 7.5); ctx.closePath(); fill('#dfe4e8');
+      ctx.fillStyle = '#4a4f55'; ctx.fillRect(-31, -6, 3, 12);
+    }
+    ctx.restore();
+  }
+
+  // ── Canvas scenes ──────────────────────────────────────────────────────────
+
+  // Piecewise axis: 1965-1975 (Apollo), a compressed break, then 2020-2030 (Artemis)
+  function drawTimelineScene(ctx, W, H, t) {
+    drawStarfield(ctx, W, H, 7);
+    const cy = H * 0.5, x0 = W * 0.06, x1 = W * 0.94;
+    // [from year, to year, from x fraction, to x fraction]
+    const seg = [[1965, 1975, 0.06, 0.30], [1975, 2020, 0.30, 0.42], [2020, 2030, 0.42, 0.94]];
+    const fx = yr => { const [a, b, p, q] = seg.find(([, hi]) => yr <= hi) || seg[2]; return W * lerp(p, q, clamp01((yr - a) / (b - a))); };
+
+    ctx.lineWidth = 1; ctx.strokeStyle = 'rgba(255,255,255,0.14)';
+    ctx.beginPath(); ctx.moveTo(x0, cy); ctx.lineTo(x1, cy); ctx.stroke();
+    [1965, 1970, 1975, 2020, 2022, 2024, 2026, 2028, 2030].forEach(yr => {
+      const x = fx(yr); ctx.beginPath(); ctx.moveTo(x, cy - 5); ctx.lineTo(x, cy + 5); ctx.stroke();
+      text(ctx, yr, x, cy + 22, { size: 10, color: 'rgba(255,255,255,0.32)', align: 'center' });
+    });
+
+    // Apollo
+    const p1 = ease((t - 200) / 800);
+    const ax0 = fx(1969), ax1 = fx(1972.95);
+    ctx.fillStyle = `rgba(${WARM},0.16)`; ctx.fillRect(ax0, cy - 24, (ax1 - ax0) * p1, 48);
+    ctx.strokeStyle = `rgba(${WARM},0.55)`; ctx.strokeRect(ax0, cy - 24, (ax1 - ax0) * p1, 48);
+    if (p1 > 0.5) {
+      text(ctx, 'APOLLO', (ax0 + ax1) / 2, cy - 34, { size: 11, color: `rgba(${WARM},0.95)`, align: 'center', weight: 500 });
+      [1969.55, 1969.9, 1971.1, 1971.6, 1972.3, 1972.95].forEach(yr => { ctx.beginPath(); ctx.arc(fx(yr), cy, 2.6, 0, Math.PI * 2); ctx.fillStyle = `rgba(${WARM},0.95)`; ctx.fill(); });
+    }
+
+    // The long gap: no one on the surface, from Dec 1972 to the planned 2028 landing
+    const p2 = ease((t - 700) / 1600);
+    const g0 = fx(1972.95), g1 = fx(2028.1);
+    ctx.save(); ctx.setLineDash([4, 6]); ctx.strokeStyle = `rgba(${COOL},0.35)`;
+    ctx.beginPath(); ctx.moveTo(g0, cy); ctx.lineTo(g0 + (g1 - g0) * p2, cy); ctx.stroke(); ctx.restore();
+    if (p2 > 0.3) text(ctx, 'No humans on the surface since Dec 1972', W * 0.5, cy - Math.min(H * 0.26, 120), { size: 12.5, color: `rgba(255,255,255,${p2 * 0.85})`, align: 'center', font: SANS });
+
+    // Artemis markers. Labels sit on staggered levels so the crowded 2027-2029 stretch stays legible
+    const items = [['I', 2022.88, 'Uncrewed', 'done', 1], ['II', 2026.25, 'Crew flyby', 'done', -1], ['III', 2027.4, 'Orbit test', 'next', 1], ['IV', 2028.1, 'Landing', 'plan', 2], ['V', 2028.9, 'Landing 2', 'plan', -2]];
+    items.forEach(([n, yr, sub, st, lvl], i) => {
+      const a = ease((t - 1500 - i * 260) / 500); if (a <= 0) return;
+      const x = fx(yr), dy = lvl * 30;
+      ctx.beginPath(); ctx.arc(x, cy, st === 'done' ? 5.5 : 5, 0, Math.PI * 2);
+      if (st === 'done') { ctx.fillStyle = `rgba(${COPPER},${a})`; ctx.fill(); }
+      else { ctx.fillStyle = `rgba(10,12,16,${a})`; ctx.fill(); ctx.strokeStyle = `rgba(${st === 'next' ? COPPER : COOL},${a})`; ctx.lineWidth = 1.5; ctx.stroke(); }
+      if (st === 'next') { const pr = (t / 1800) % 1; ctx.beginPath(); ctx.arc(x, cy, 5 + pr * 12, 0, Math.PI * 2); ctx.strokeStyle = `rgba(${COPPER},${0.6 * (1 - pr) * a})`; ctx.lineWidth = 1; ctx.stroke(); }
+      ctx.strokeStyle = `rgba(255,255,255,${0.12 * a})`; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(x, cy + Math.sign(dy) * 8); ctx.lineTo(x, cy + dy - Math.sign(dy) * 13); ctx.stroke();
+      const col = st === 'plan' ? `rgba(${COOL},${a * 0.95})` : `rgba(${COPPER},${a})`;
+      text(ctx, 'A' + n, x, cy + dy, { size: 11, color: col, align: 'center', weight: 600 });
+      text(ctx, sub, x, cy + dy + (dy < 0 ? -13 : 13), { size: 9.5, color: `rgba(255,255,255,${a * 0.6})`, align: 'center' });
+    });
+
+    // Today
+    const nx = fx(2026.75), pn = ease((t - 2200) / 500);
+    ctx.strokeStyle = `rgba(255,255,255,${0.22 * pn})`; ctx.setLineDash([2, 4]); ctx.beginPath(); ctx.moveTo(nx, cy - 84); ctx.lineTo(nx, H - 46); ctx.stroke(); ctx.setLineDash([]);
+    text(ctx, 'Today', nx, H - 32, { size: 10, color: `rgba(255,255,255,${0.65 * pn})`, align: 'center' });
+
+    text(ctx, 'Axis is broken between 1975 and 2020', x1, H - 16, { size: 9.5, color: 'rgba(255,255,255,0.28)', align: 'right' });
+  }
+
+  // Artemis II free-return flyby
+  function drawFlybyScene(ctx, W, H, t) {
+    drawStarfield(ctx, W, H, 99);
+    const ex = W * 0.14, ey = H * 0.5, er = Math.min(W, H) * 0.08;
+    const mx = W * 0.82, my = H * 0.5, mr = er * 0.6;
+    const P0 = [ex + er * 0.85, ey - er * 0.25], P3 = [mx + mr * 2.4, my], P5 = [ex + er * 0.85, ey + er * 0.25];
+    const out = s => bez(P0, [W * 0.3, H * 0.06], [W * 0.66, H * 0.12], P3, s);
+    const ret = s => bez(P3, [W * 0.66, H * 0.88], [W * 0.3, H * 0.94], P5, s);
+
+    earth(ctx, ex, ey, er); moon(ctx, mx, my, mr);
+    ctx.save(); ctx.setLineDash([3, 6]); ctx.strokeStyle = `rgba(${COPPER},0.3)`; ctx.lineWidth = 1;
+    ctx.beginPath(); for (let i = 0; i <= 60; i++) { const [x, y] = out(i / 60); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }
+    for (let i = 0; i <= 60; i++) { const [x, y] = ret(i / 60); ctx.lineTo(x, y); } ctx.stroke(); ctx.restore();
+
+    const LOOP = 26000, loop = (t % LOOP) / LOOP, FLY = 0.553, DAYS = 9 + 1.5 / 24, day0 = loop * DAYS;
+    // Where Orion is on the path follows a distance-vs-time model (see orbital3d.js): first day in high Earth orbit,
+    // a fast climb after the burn on day 2, closest approach at day 5, then a coast that speeds up toward Earth.
+    const km = day0 < 1.1 ? 71000 * smooth(day0 / 1.1) : day0 < 5.017 ? 71000 + 335771 * (1 - Math.pow(1 - (day0 - 1.1) / 3.917, 1.7)) : 406771 * (1 - Math.pow((day0 - 5.017) / (DAYS - 5.017), 1.8));
+    const half = 0.04 + 0.46 * Math.min(1, Math.max(0, (km - 20000) / (406771 - 20000)));   // outbound curve parameter, 0 to 0.5
+    const u = loop < FLY ? half : 1 - half;
+    const pt = s => (s < 0.5 ? out(s * 2) : ret((s - 0.5) * 2));
+
+    ctx.lineWidth = 2; ctx.lineCap = 'round';
+    const steps = 140;
+    for (let i = 0; i < steps; i++) {
+      const s0 = u * i / steps, s1 = u * (i + 1) / steps, [a, b] = pt(s0), [c, d] = pt(s1);
+      ctx.beginPath(); ctx.moveTo(a, b); ctx.lineTo(c, d); ctx.strokeStyle = `rgba(${COPPER},${0.15 + (i / steps) * 0.75})`; ctx.stroke();
+    }
+    const [ox, oy] = pt(u);
+    const gl = ctx.createRadialGradient(ox, oy, 0, ox, oy, 14); gl.addColorStop(0, `rgba(${COPPER},0.7)`); gl.addColorStop(1, 'transparent');
+    ctx.beginPath(); ctx.arc(ox, oy, 14, 0, Math.PI * 2); ctx.fillStyle = gl; ctx.fill();
+    ctx.beginPath(); ctx.arc(ox, oy, 3.8, 0, Math.PI * 2); ctx.fillStyle = `rgb(${COPPER})`; ctx.fill();
+
+    const day = loop * (9 + 1.5 / 24);
+    text(ctx, 'EARTH', ex, ey + er + 22, { size: 10, align: 'center', color: 'rgba(130,180,255,0.75)' });
+    text(ctx, 'MOON', mx, my + mr + 20, { size: 10, align: 'center', color: 'rgba(210,205,195,0.75)' });
+    text(ctx, `DAY ${Math.floor(day) + 1}`, W * 0.5, H * 0.5 - 6, { size: 20, align: 'center', color: 'rgba(255,255,255,0.88)', weight: 500 });
+    text(ctx, loop < 0.1 ? 'Launch and Earth orbit' : loop < 0.5 ? 'Outbound' : loop < 0.62 ? 'Lunar flyby' : loop < 0.96 ? 'Free return' : 'Splashdown', W * 0.5, H * 0.5 + 16, { size: 11, align: 'center', color: `rgba(${COOL},0.75)` });
+    const near = smooth(1 - Math.abs(loop - FLY) / 0.08);
+    text(ctx, '6,545 km above the far side', W - 14, P3[1] + mr * 2 + 26, { size: 10, align: 'right', color: `rgba(255,255,255,${0.25 + 0.7 * near})` });
+    text(ctx, 'Farthest: 406,771 km from Earth', W * 0.5, H * 0.94, { size: 10, align: 'center', color: 'rgba(255,255,255,0.4)' });
+  }
+
+  // Artemis III: three vehicles in one orbit
+  function drawLeoScene(ctx, W, H, t) {
+    drawStarfield(ctx, W, H, 31);
+    const SEQ = 48, ts = (t / 1000) % SEQ;
+    const cx = W * 0.5, cy = H * 1.6, Re = H * 0.98, Ro = Re * 1.12;
+    earth(ctx, cx, cy, Re);
+    ctx.strokeStyle = `rgba(${COPPER},0.5)`; ctx.lineWidth = 1.2; ctx.beginPath(); ctx.arc(cx, cy, Ro, Math.PI * 1.06, Math.PI * 1.94); ctx.stroke();
+
+    const at = (xf, rOff = 0) => { // x fraction of width -> point on orbit plus tangent angle
+      const a = -Math.PI / 2 + (xf * W - cx) / Ro, r = Ro + rOff;
+      return [cx + r * Math.cos(a), cy + r * Math.sin(a), a + Math.PI / 2];
+    };
+    const u = Math.max(1.35, Math.min(2.4, W / 290));          // glyph scale grows with the stage
+    const bX = 0.5, sX = 0.22, dB = 35 * u / W, dS = 52 * u / W; // nose-to-tail docking distance in px, as a fraction of width
+    const orionX = track([[0, 1.2], [6, 1.2], [13, bX + 0.2], [18, bX + dB], [25.5, bX + dB], [28, bX + 0.15], [31, bX - 0.02], [34, sX + 0.22], [37, sX + dS], [42.5, sX + dS], [46, sX + 0.3]], ts);
+    const orionR = track([[0, 0], [26, 0], [28, 34], [34.5, 34], [37, 0], [43, 0], [47, -Re * 0.5]], ts);
+    const oA = smooth((ts - 6) / 1.4) * (1 - smooth((ts - 45) / 2.5));
+    const sA = smooth((ts - 22) / 1.6) * (1 - smooth((ts - 47.2) / 0.8));
+    const bA = smooth(ts / 1.2) * (1 - smooth((ts - 47.2) / 0.8));
+
+    const [bx, by, ba] = at(bX); vehicle(ctx, 'blue', bx, by - 14 * u, ba, u, bA);
+    const [sx, sy, sa] = at(sX); vehicle(ctx, 'starship', sx, sy - 12 * u, sa, u, sA);
+    const [ox, oy, oa] = at(orionX, orionR); vehicle(ctx, 'orion', ox, oy - 14 * u, oa, u, oA);
+
+    const lab = (str, x, y, a, col) => a > 0.05 && text(ctx, str, x, y, { size: 10, align: 'center', color: `rgba(${col},${a * 0.9})` });
+    lab('BLUE ORIGIN TEST ARTICLE', bx, by - 26 * u - 30, bA, COOL);
+    lab('STARSHIP TEST ARTICLE', sx, sy - 26 * u - 18, sA, COOL);
+    lab('ORION', ox, oy - 26 * u - 6, oA, COPPER);
+
+    const docked = (a, b) => Math.abs(a - b) < 0.012 && oA > 0.9;
+    const flash = docked(orionX, bX + dB) || docked(orionX, sX + dS);
+    if (flash) { const pr = (t / 900) % 1, fx = docked(orionX, bX + dB) ? (bx + ox) / 2 : (sx + ox) / 2, fy = (docked(orionX, bX + dB) ? by : sy) - 14;
+      ctx.beginPath(); ctx.arc(fx, fy, 6 + pr * 16, 0, Math.PI * 2); ctx.strokeStyle = `rgba(${COPPER},${0.7 * (1 - pr)})`; ctx.lineWidth = 1.2; ctx.stroke(); }
+
+    const steps = [[0, 'A Blue Origin lander test vehicle launches first.'], [6, 'SLS lifts four crew in Orion into the same orbit.'], [13, 'Orion closes in, then docks for about 2 days.'],
+      [22, 'A Starship test article launches. It has a docking port, no crew cabin.'], [26, 'Orion undocks and flies to Starship for about 1 day.'], [43, 'Deorbit, entry, splashdown about two weeks after launch.']];
+    let cap = steps[0][1]; steps.forEach(([s, c]) => { if (ts >= s) cap = c; });
+    text(ctx, cap, W * 0.5, H * 0.14, { size: 13, align: 'center', color: 'rgba(255,255,255,0.88)', font: SANS });
+    text(ctx, 'About 430 km up, inclined 33 degrees. Not to scale.', W * 0.5, H * 0.14 + 20, { size: 10, align: 'center', color: 'rgba(255,255,255,0.4)' });
+  }
+
+  // Fallback if the 3D model cannot load: Saturn V beside SLS
+  function drawRocketsScene(ctx, W, H, t) {
+    drawStarfield(ctx, W, H, 13);
+    const prog = ease(t / 1400), ground = H * 0.86, maxH = H * 0.7;
+    const svx = W * 0.3, slx = W * 0.7;
+    const svh = maxH * (111 / 111) * prog, slh = maxH * (98 / 111) * prog;
+    ctx.strokeStyle = 'rgba(255,255,255,0.12)'; ctx.beginPath(); ctx.moveTo(W * 0.1, ground); ctx.lineTo(W * 0.9, ground); ctx.stroke();
+    ctx.fillStyle = `rgba(${WARM},0.85)`; ctx.fillRect(svx - 15, ground - svh, 30, svh);
+    ctx.fillStyle = 'rgba(0,0,0,0.55)'; [0.28, 0.52, 0.74].forEach(f => ctx.fillRect(svx - 15, ground - svh * f - 4, 30, 8));
+    ctx.fillStyle = 'rgba(232,236,240,0.92)'; ctx.fillRect(slx - 14, ground - slh, 28, slh);
+    ctx.fillStyle = `rgba(${COPPER},0.85)`; ctx.fillRect(slx - 14, ground - slh * 0.62, 28, slh * 0.5);
+    ctx.fillStyle = 'rgba(232,236,240,0.92)'; [-22, 22].forEach(dx => ctx.fillRect(slx + dx - 4, ground - slh * 0.5, 8, slh * 0.5));
+    if (prog > 0.8) {
+      text(ctx, '111 m', svx, ground - svh - 14, { size: 13, align: 'center', color: `rgba(${WARM},1)`, weight: 500 });
+      text(ctx, '98 m', slx, ground - slh - 14, { size: 13, align: 'center', color: 'rgba(240,244,248,1)', weight: 500 });
+      text(ctx, 'SATURN V', svx, ground + 22, { size: 11, align: 'center', color: `rgba(${WARM},0.9)` });
+      text(ctx, 'SLS BLOCK 1', slx, ground + 22, { size: 11, align: 'center', color: 'rgba(240,244,248,0.9)' });
+    }
+  }
+
+  // Fallback: Starship HLS beside Blue Moon Mark 2, to scale (52 m vs 16 m)
+  function drawLandersScene(ctx, W, H, t) {
+    drawStarfield(ctx, W, H, 77);
+    const ground = H * 0.84, prog = ease(t / 1200), sx = W * 0.32, bx = W * 0.7;
+    ctx.fillStyle = 'rgba(120,110,100,0.14)'; ctx.fillRect(0, ground, W, H - ground);
+    const sh = H * 0.66 * prog, bh = sh * (16 / 52);
+    const g = ctx.createLinearGradient(sx - 18, 0, sx + 18, 0); g.addColorStop(0, 'rgba(140,150,165,0.85)'); g.addColorStop(0.5, 'rgba(235,238,242,0.95)'); g.addColorStop(1, 'rgba(120,128,140,0.85)');
+    ctx.fillStyle = g; ctx.fillRect(sx - 18, ground - sh, 36, sh);
+    ctx.beginPath(); ctx.moveTo(sx - 18, ground - sh); ctx.quadraticCurveTo(sx, ground - sh - 34, sx + 18, ground - sh); ctx.fillStyle = 'rgba(220,224,230,0.95)'; ctx.fill();
+    ctx.fillStyle = 'rgba(225,232,240,0.95)'; ctx.fillRect(bx - 26, ground - bh, 52, bh * 0.7);
+    ctx.fillStyle = 'rgba(107,143,179,0.95)'; ctx.fillRect(bx - 30, ground - bh * 0.3, 60, bh * 0.3);
+    if (prog > 0.8) {
+      text(ctx, 'STARSHIP HLS', sx, ground + 22, { size: 11, align: 'center', color: 'rgba(235,238,242,0.9)' });
+      text(ctx, '~52 m', sx, ground - sh - 42, { size: 12, align: 'center', color: 'rgba(255,255,255,0.7)' });
+      text(ctx, 'BLUE MOON MK2', bx, ground + 22, { size: 11, align: 'center', color: 'rgba(200,220,240,0.9)' });
+      text(ctx, '16 m', bx, ground - bh - 12, { size: 12, align: 'center', color: 'rgba(255,255,255,0.7)' });
+    }
+  }
+
+  // The south polar region as a face-on Moon rotated 180 degrees (south up). Apollo sites use real coordinates.
+  function drawLandingSiteScene(ctx, W, H, t) {
+    const cx = W * 0.5, cy = H * 0.54, r = Math.min(W, H) * 0.36;
+    const mg = ctx.createRadialGradient(cx - r * 0.25, cy - r * 0.25, r * 0.1, cx, cy, r);
+    mg.addColorStop(0, '#cfc7bb'); mg.addColorStop(0.55, '#9d958b'); mg.addColorStop(1, '#6a655d');
+    ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fillStyle = mg; ctx.fill();
+
+    [[0.05, -0.85, 0.2], [-0.3, -0.76, 0.13], [0.34, -0.78, 0.15], [-0.12, -0.94, 0.09], [0.2, -0.68, 0.1]].forEach(([px, py, pr]) => {
+      ctx.beginPath(); ctx.arc(cx + px * r, cy + py * r, pr * r, 0, Math.PI * 2); ctx.fillStyle = 'rgba(18,10,6,0.7)'; ctx.fill();
+    });
+    [[0.1, -0.15, 0.08, 0.6], [-0.3, 0.2, 0.06, 0.5], [0.4, -0.3, 0.05, 0.4], [-0.1, 0.45, 0.09, 0.45], [0.2, 0.35, 0.04, 0.5], [-0.45, -0.1, 0.07, 0.35]].forEach(([px, py, pr, a]) => {
+      ctx.beginPath(); ctx.arc(cx + px * r, cy + py * r, pr * r, 0, Math.PI * 2); ctx.strokeStyle = `rgba(70,62,54,${a})`; ctx.lineWidth = 1; ctx.stroke();
+    });
+
+    // Apollo landing sites: [lat, lon, name]. South-up view: x = -sin(lon)cos(lat), y = +sin(lat)
+    const sites = [[0.67, 23.47, 'A11'], [-3.0, -23.4, 'A12'], [-3.65, -17.5, 'A14'], [26.1, 3.6, 'A15'], [-8.97, 15.5, 'A16'], [20.2, 30.8, 'A17']];
+    const a = ease((t - 600) / 500), d2r = Math.PI / 180;
+    sites.forEach(([lat, lon, n]) => {
+      const x = cx - r * Math.sin(lon * d2r) * Math.cos(lat * d2r), y = cy + r * Math.sin(lat * d2r);
+      ctx.beginPath(); ctx.arc(x, y, 3, 0, Math.PI * 2); ctx.fillStyle = `rgba(${WARM},${a})`; ctx.fill();
+      text(ctx, n, x, y - 7, { size: 8.5, align: 'center', color: `rgba(${WARM},${a * 0.8})` });
+    });
+
+    const shx = cx + 0.03 * r, shy = cy - 0.9 * r, shr = 0.1 * r, pulse = 0.65 + 0.35 * Math.sin(t / 650);
+    ctx.beginPath(); ctx.arc(shx, shy, shr, 0, Math.PI * 2); ctx.fillStyle = 'rgba(12,7,4,0.9)'; ctx.fill();
+    ctx.strokeStyle = `rgba(${COPPER},${pulse})`; ctx.lineWidth = 2; ctx.stroke();
+    ctx.beginPath(); ctx.arc(shx, shy, shr + 7, 0, Math.PI * 2); ctx.strokeStyle = `rgba(${COPPER},${pulse * 0.3})`; ctx.lineWidth = 1.2; ctx.stroke();
+
+    text(ctx, 'SHACKLETON CRATER', shx + shr + 14, shy - 2, { size: 10.5, color: `rgba(${COPPER},0.95)`, weight: 500 });
+    text(ctx, '21 km wide, 4.2 km deep', shx + shr + 14, shy + 13, { size: 9.5, color: `rgba(${COPPER},0.7)` });
+    text(ctx, 'Permanently shadowed regions', cx - r * 0.35, cy - r * 0.55, { size: 9.5, align: 'center', color: 'rgba(200,185,170,0.6)' });
+    text(ctx, 'Apollo sites (equatorial)', cx, cy + r * 0.62, { size: 9.5, align: 'center', color: `rgba(${WARM},${a * 0.6})` });
+    text(ctx, 'SOUTH POLE', cx, cy - r - 12, { size: 10, align: 'center', color: 'rgba(255,255,255,0.4)' });
+    text(ctx, 'Near side, south up', cx, cy + r + 20, { size: 10, align: 'center', color: 'rgba(255,255,255,0.3)' });
+  }
+
+  // The road from Artemis I to a base, including the station that was cancelled
+  function drawProgramScene(ctx, W, H, t) {
+    drawStarfield(ctx, W, H, 58);
+    const x0 = W * 0.11, x1 = W * 0.89, cy = H * 0.52;
+    const nodes = [['I', 'Nov 2022', ['Uncrewed', 'flyby'], 'done'], ['II', 'Apr 2026', ['Crew', 'flyby'], 'done'], ['III', 'NET Jun 2027', ['Orbit docking', 'test'], 'next'], ['IV', 'Early 2028', ['First', 'landing'], 'plan'], ['V', 'Late 2028', ['Second landing,', 'base work'], 'plan']];
+    const px = i => lerp(x0, x1, i / 4), py = i => cy + Math.sin(i * 1.1) * H * 0.07;
+    const p = ease(t / 2200);
+    ctx.lineWidth = 1; ctx.strokeStyle = 'rgba(255,255,255,0.14)'; ctx.beginPath();
+    for (let i = 0; i <= 80; i++) { const f = i / 80 * 4, x = lerp(x0, x1, f / 4), y = cy + Math.sin(f * 1.1) * H * 0.07; i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); } ctx.stroke();
+    ctx.strokeStyle = `rgb(${COPPER})`; ctx.lineWidth = 2; ctx.beginPath();
+    for (let i = 0; i <= 40; i++) { const f = i / 40 * 2; if (f / 4 > p) break; const x = lerp(x0, x1, f / 4), y = cy + Math.sin(f * 1.1) * H * 0.07; i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); } ctx.stroke();
+
+    // Cancelled Gateway station, shown as a struck-through ghost between IV and V
+    const gx = lerp(px(3), px(4), 0.5), gy = py(3.5) - H * 0.2, ga = ease((t - 1800) / 600);
+    ctx.save(); ctx.setLineDash([3, 4]); ctx.strokeStyle = `rgba(${COOL},${0.5 * ga})`; ctx.beginPath(); ctx.arc(gx, gy, 14, 0, Math.PI * 2); ctx.stroke(); ctx.restore();
+    ctx.strokeStyle = `rgba(229,118,111,${0.8 * ga})`; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(gx - 10, gy + 10); ctx.lineTo(gx + 10, gy - 10); ctx.stroke();
+    text(ctx, 'Lunar Gateway', gx, gy - 26, { size: 10, align: 'center', color: `rgba(${COOL},${0.85 * ga})` });
+    text(ctx, 'cancelled Mar 2026', gx, gy - 13 + 52, { size: 9.5, align: 'center', color: `rgba(229,118,111,${0.85 * ga})` });
+
+    nodes.forEach(([n, when, what, st], i) => {
+      const a = ease((t - 400 - i * 300) / 500); if (a <= 0) return;
+      const x = px(i), y = py(i);
+      ctx.beginPath(); ctx.arc(x, y, 11, 0, Math.PI * 2);
+      if (st === 'done') { ctx.fillStyle = `rgba(${COPPER},${a})`; ctx.fill(); } else { ctx.fillStyle = `rgba(10,12,16,${a})`; ctx.fill(); ctx.lineWidth = 1.5; ctx.strokeStyle = `rgba(${st === 'next' ? COPPER : COOL},${a})`; ctx.stroke(); }
+      if (st === 'next') { const pr = (t / 1900) % 1; ctx.beginPath(); ctx.arc(x, y, 11 + pr * 16, 0, Math.PI * 2); ctx.strokeStyle = `rgba(${COPPER},${0.55 * (1 - pr) * a})`; ctx.lineWidth = 1; ctx.stroke(); }
+      text(ctx, n, x, y + 4, { size: 11, align: 'center', weight: 600, color: st === 'done' ? `rgba(26,13,6,${a})` : `rgba(${st === 'next' ? COPPER : COOL},${a})` });
+      text(ctx, when, x, y + 34, { size: 10.5, align: 'center', color: `rgba(255,255,255,${a * 0.85})` });
+      what.forEach((ln, k) => text(ctx, ln, x, y + 49 + k * 12, { size: 9.5, align: 'center', color: `rgba(255,255,255,${a * 0.5})` }));
+    });
+  }
+
+  // The DSN from above the pole: three complexes, at least one always faces the Moon
+  function drawDSNScene(ctx, W, H, t) {
+    drawStarfield(ctx, W, H, 22);
+    const R = Math.min(W, H) * 0.23, ex = W * 0.38, ey = H * 0.48, mx = W * 0.9, my = H * 0.48;
+    earth(ctx, ex, ey, R);
+    moon(ctx, mx, my, R * 0.16);
+    text(ctx, 'MOON', mx, my + R * 0.16 + 18, { size: 10, align: 'center', color: 'rgba(210,205,195,0.7)' });
+
+    const phi = (t / 1000) * 0.17;
+    ctx.strokeStyle = 'rgba(255,255,255,0.09)'; ctx.lineWidth = 1;
+    for (let k = 0; k < 12; k++) { const a = phi + k * Math.PI / 6; ctx.beginPath(); ctx.moveTo(ex, ey); ctx.lineTo(ex + R * Math.cos(a), ey + R * Math.sin(a)); ctx.stroke(); }
+    [0.5, 0.8].forEach(f => { ctx.beginPath(); ctx.arc(ex, ey, R * f, 0, Math.PI * 2); ctx.stroke(); });
+
+    const st = [['GOLDSTONE', -116.8, 35.4], ['MADRID', -4.2, 40.4], ['CANBERRA', 148.9, -35.4]];
+    let visible = 0;
+    st.forEach(([name, lon, lat], i) => {
+      const a = phi + lon * Math.PI / 180, rr = R * Math.cos(lat * Math.PI / 180);
+      const x = ex + rr * Math.cos(a), y = ey + rr * Math.sin(a), sees = Math.cos(a) > 0.05;
+      if (sees) {
+        visible++;
+        ctx.save(); ctx.setLineDash([3, 6]); ctx.strokeStyle = `rgba(${COPPER},0.35)`; ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(mx, my); ctx.stroke(); ctx.restore();
+        const pr = ((t / 1400) + i * 0.33) % 1;
+        ctx.beginPath(); ctx.arc(lerp(x, mx, pr), lerp(y, my, pr), 2.6, 0, Math.PI * 2); ctx.fillStyle = `rgba(${COPPER},${0.9 - pr * 0.6})`; ctx.fill();
+      }
+      ctx.beginPath(); ctx.arc(x, y, 5, 0, Math.PI * 2); ctx.fillStyle = sees ? `rgb(${COPPER})` : 'rgba(255,255,255,0.45)'; ctx.fill();
+      const out = Math.cos(a) >= 0 ? 1 : -1;
+      text(ctx, name, x + 12 * Math.sign(Math.cos(a) || 1), y + 4, { size: 9.5, align: Math.cos(a) >= 0 ? 'left' : 'right', color: sees ? `rgba(${COPPER},0.95)` : 'rgba(255,255,255,0.45)' });
+    });
+    text(ctx, `${visible} of 3 complexes can see the Moon right now`, W * 0.5, H * 0.92, { size: 11.5, align: 'center', color: 'rgba(255,255,255,0.7)', font: SANS });
+    text(ctx, 'Schematic view from above the pole', W * 0.5, H * 0.92 + 18, { size: 9.5, align: 'center', color: 'rgba(255,255,255,0.35)' });
+  }
+
+  // ── Scenes ─────────────────────────────────────────────────────────────────
   const SCENES = [
-
-    // ══ 0: THE 54-YEAR GAP ════════════════════════════════════════════════════
     {
-      chapter: 'PROLOGUE',
-      title: '54 Years of Silence',
-      text: `In December 1972, Apollo 17 commander Gene Cernan etched the last human bootprint into lunar dust. Then the program ended — not due to failure, but politics and budget.
-<br><br>For <strong>54 years</strong>, the Moon sat 384,400 km away, explored only by robots. An entire generation grew up never seeing a human stand on another world.
-<br><br>Artemis changes that. Named after Apollo's twin sister — goddess of the Moon — it picks up where Apollo left off, this time to <em>stay</em>.`,
+      chapter: 'The gap', title: '53 years since the last footprints',
+      bg: { id: 'as17-134-20481', credit: 'Apollo 17 commander Gene Cernan at the lunar module ladder, Dec 1972. NASA' },
+      text: [
+        'In December 1972 Gene Cernan climbed the ladder of Apollo 17\'s lander and became the last person to stand on the Moon. The program ended over budget and politics, not engineering.',
+        'For more than half a century only robots visited. In April 2026 people went back, but only around it. <strong>The footprints are still to come.</strong>',
+      ],
       stats: [
-        { label: 'Years without a human on the Moon', val: '54', sub: '1972 → 2026' },
-        { label: 'Apollo astronauts who walked on Moon', val: '12', sub: 'All male, all American' },
-        { label: 'Lunar samples returned by Apollo', val: '382', unit: 'kg', sub: 'Still being studied today' },
-        { label: 'Artemis crewed missions planned', val: '3+', sub: 'III, IV, V and beyond' },
+        { label: 'Years since the last Moon landing', val: '53', sub: 'Dec 1972 to Sep 2026. The next one is planned for 2028.' },
+        { label: 'Apollo astronauts who walked on the Moon', val: '12', sub: 'All American men' },
+        { label: 'Lunar samples returned by Apollo', val: '382', unit: 'kg', sub: 'Still being studied' },
+        { label: 'First Artemis landing', val: '2028', sub: 'Artemis IV, planned early 2028' },
       ],
       draw: drawTimelineScene,
     },
-
-    // ══ 1: THE ROCKETS ════════════════════════════════════════════════════════
     {
-      chapter: 'THE HARDWARE',
-      title: 'New Rockets for a New Era',
-      text: `Apollo flew on the <strong>Saturn V</strong> — still the most powerful rocket ever successfully flown. It stood 111 metres tall and could send 48 tonnes to the Moon.
-<br><br>Artemis uses the <strong>Space Launch System (SLS) Block 1B</strong> — slightly shorter at 98m but with 15% more thrust, carrying the Orion capsule and its crew of 4 toward lunar orbit.
-<br><br>Where Saturn V was a one-shot disposable behemoth, SLS supports a broader ecosystem — reusable Orion capsule, commercial landers, and a lunar Gateway station.`,
-      compare: {
-        left:  { label: 'Saturn V', color: 'gold', rows: [
-          { k: 'Height',        v: '111 m' },
-          { k: 'Thrust (liftoff)', v: '34.0 MN' },
-          { k: 'Lunar payload', v: '48,600 kg' },
-          { k: 'Crew',          v: '3 (Apollo CM)' },
-          { k: 'Missions',      v: '13 flown' },
-          { k: 'First flight',  v: '1967' },
-        ]},
-        right: { label: 'SLS Block 1B', color: 'accent', rows: [
-          { k: 'Height',        v: '98 m' },
-          { k: 'Thrust (liftoff)', v: '39.1 MN' },
-          { k: 'Lunar payload', v: '42,000 kg' },
-          { k: 'Crew',          v: '4 (Orion)' },
-          { k: 'Missions',      v: 'In service' },
-          { k: 'First flight',  v: '2022' },
-        ]},
-      },
-      draw: drawRocketsScene,
-      model: 'sls',
-      modelLabel: 'SLS Block 1 · Artemis launch vehicle',
-    },
-
-    // ══ 2: EARTH → MOON ═══════════════════════════════════════════════════════
-    {
-      chapter: 'THE JOURNEY',
-      title: 'Three Days to the Moon',
-      text: `After Trans-Lunar Injection, Orion coasts through 384,400 km of deep space. There are no pit stops — just the quiet of vacuum and the slowly growing Moon.
-<br><br>The trajectory isn't a straight line. Orion follows a precise arc, trading speed for altitude as Earth's gravity pulls back. At its fastest — <strong>10.8 km/s</strong> during TLI — it crosses a distance that takes light 1.28 seconds in just 3 days.
-<br><br>Apollo 11 took the same basic route in 1969. The physics hasn't changed. The destination now is different: not a simple lunar orbit, but the <em>Near-Rectilinear Halo Orbit</em> where Starship HLS waits.`,
-      stats: [
-        { label: 'Earth–Moon distance (avg)', val: '384,400', unit: 'km', sub: 'Varies 356k–407k km' },
-        { label: 'TLI velocity', val: '10.8', unit: 'km/s', sub: '~39,000 km/h' },
-        { label: 'Coast duration', val: '~3', unit: 'days', sub: 'Before lunar orbit insertion' },
-        { label: 'Signal delay (one-way)', val: '1.28', unit: 'sec', sub: 'Speed of light' },
+      chapter: 'April 2026', title: 'Artemis II flew around the Moon',
+      bg: { id: 'art002e021278', credit: '"A Breathtaking Earthset from Orion," Artemis II crew, Apr 6, 2026. NASA' },
+      text: [
+        'On April 1, 2026, Reid Wiseman, Victor Glover, Christina Koch and Canada\'s Jeremy Hansen lifted off on the Space Launch System. Their Orion capsule was named Integrity.',
+        'Nine days later they splashed down off San Diego. On the way they passed <strong>6,545 km above the far side of the Moon</strong> and reached 406,771 km from Earth, farther than any human has gone. Apollo 13\'s record had stood for 56 years.',
       ],
-      draw: drawTrajectoryScene,
-    },
-
-    // ══ 3: THE ORBIT ══════════════════════════════════════════════════════════
-    {
-      chapter: 'THE ORBIT',
-      title: 'The Near-Rectilinear Halo Orbit',
-      text: `Artemis doesn't park in a simple circular orbit. It uses the <strong>Near-Rectilinear Halo Orbit (NRHO)</strong> — a highly elongated loop anchored at the Moon's L2 gravitational region.
-<br><br>At its closest (perilune), Orion sweeps just <strong>3,000 km</strong> above the lunar south pole — within easy reach of Starship HLS. At its farthest (apolune), it stretches out <strong>70,000 km</strong>, giving continuous communications with Earth.
-<br><br>This same orbit will host the Lunar Gateway space station. It's unstable enough to be efficient (low stationkeeping fuel) yet stable enough for long-term use.`,
       stats: [
-        { label: 'Perilune altitude', val: '3,000', unit: 'km', sub: 'Passes over south pole' },
-        { label: 'Apolune altitude',  val: '70,000', unit: 'km', sub: 'Continuous Earth comms' },
-        { label: 'Orbital period',    val: '~7', unit: 'days', sub: 'One complete revolution' },
-        { label: 'vs Apollo LO', val: '110', unit: 'km', sub: 'Apollo used circular orbits' },
+        { label: 'Farthest from Earth', val: '406,771', unit: 'km', sub: 'Beat Apollo 13 by about 6,600 km' },
+        { label: 'Closest pass over the far side', val: '6,545', unit: 'km', sub: '40 minutes without signal' },
+        { label: 'Mission length', val: '9 d 1 h', sub: 'Apr 1 to Apr 11, 2026 UTC' },
+        { label: 'Crew', val: '4', sub: 'Wiseman, Glover, Koch, Hansen' },
       ],
-      draw: drawNRHOScene,
+      draw: drawFlybyScene,
     },
-
-    // ══ 4: TWO LANDERS ════════════════════════════════════════════════════════
     {
-      chapter: 'THE LANDERS',
-      title: 'Two Companies, Two Landers',
-      text: `NASA's strategy is competition. They awarded <strong>two</strong> Human Landing System contracts — one to SpaceX, one to Blue Origin — rather than relying on a single supplier as Apollo did with Grumman.
-<br><br><strong>SpaceX Starship HLS</strong> flies Artemis III. A modified version of the Mars-bound Starship, it launches to NRHO separately, refuels in orbit, then waits for Orion. It's enormous — 50m tall, designed to eventually carry 100+ people.
-<br><br><strong>Blue Origin Blue Moon</strong> is contracted for Artemis V. A more traditional lander design, built from decades of engine development. Its BE-7 engine burns liquid hydrogen and oxygen — the most efficient chemical propellant combination.`,
-      compare: {
-        left:  { label: 'SpaceX Starship HLS', color: 'accent', subLabel: 'ARTEMIS III', rows: [
-          { k: 'Height',     v: '~50 m' },
-          { k: 'Diameter',   v: '9 m' },
-          { k: 'Crew',       v: '2 (surface)' },
-          { k: 'Propellant', v: 'LCH₄ / LOX' },
-          { k: 'Engine',     v: 'Raptor vacuum' },
-          { k: 'Cargo to surface', v: '>100 t' },
-        ]},
-        right: { label: 'Blue Moon MK1', color: 'accent2', subLabel: 'ARTEMIS V', rows: [
-          { k: 'Height',     v: '16 m' },
-          { k: 'Diameter',   v: '7 m' },
-          { k: 'Crew',       v: '2 (surface)' },
-          { k: 'Propellant', v: 'LH₂ / LOX' },
-          { k: 'Engine',     v: 'BE-7' },
-          { k: 'Cargo to surface', v: '20 t' },
-        ]},
-      },
-      draw: drawLandersScene,
-      model: 'starship',
-      modelLabel: 'SpaceX Starship HLS · Artemis III lander',
-    },
-
-    // ══ 5: LANDING SITE ═══════════════════════════════════════════════════════
-    {
-      chapter: 'THE LANDING SITE',
-      title: 'Shackleton Crater Rim',
-      text: `Artemis III targets the <strong>lunar south pole</strong> — a region Apollo never reached. The 6 Apollo landing sites were all near the equator, chosen for safety and sunlight.
-<br><br>Near the south pole, craters like <strong>Shackleton</strong> (21 km wide, 5 km deep) have rims that bask in near-continuous sunlight while their interiors — <em>Permanently Shadowed Regions</em> — haven't seen sunlight in billions of years.
-<br><br>LCROSS confirmed water ice in these shadows in 2009. Water means oxygen for breathing, hydrogen for fuel — the building blocks of a permanent lunar base. The south pole isn't just a destination. It's the <em>resource depot for humanity's future in space</em>.`,
+      chapter: 'The new plan', title: 'Artemis III is a rehearsal, not a landing',
+      bg: { id: 'MK2_EOR_ArtemisIII_Dock', credit: 'Artist\'s concept: Orion docking with a Blue Moon test article. Blue Origin' },
+      text: [
+        'In February 2026 NASA reshuffled the program. The landers are not ready, so <strong>Artemis III became a test in Earth orbit</strong> and the first landing moved to Artemis IV.',
+        'Three rockets launch into one orbit: a Blue Origin lander test article, then SLS with four astronauts in Orion, then a SpaceX Starship test article. Orion docks with each. The crew climbs into the Blue Origin cabin to test its systems and its spacesuit connections.',
+        'Staying in Earth orbit keeps the crew close to home if a docking goes wrong.',
+      ],
       stats: [
-        { label: 'Shackleton Crater diameter', val: '21', unit: 'km', sub: '5 km deep' },
-        { label: 'Latitude', val: '89.5°', unit: 'S', sub: 'Near lunar south pole' },
-        { label: 'Water ice confirmed', val: '2009', sub: 'NASA LCROSS impact' },
-        { label: 'Candidate landing regions', val: '13', sub: 'Within 6° of south pole' },
+        { label: 'Launch target', val: 'NET Jun 2027', sub: 'Reported about 90 days behind' },
+        { label: 'Launches in one mission', val: '3', sub: 'Blue Origin, SLS, Starship' },
+        { label: 'Orbit altitude', val: '430', unit: 'km', sub: 'Inclined 33 degrees' },
+        { label: 'Mission length', val: '~2', unit: 'weeks', sub: 'Splashdown off San Diego' },
+      ],
+      draw: drawLeoScene,
+    },
+    {
+      chapter: 'The rocket', title: 'The most thrust, half the reach',
+      bg: { id: 'KSC-04012026-Artemis II_Launch-1', credit: 'Artemis II lifts off from Launch Complex 39B, Apr 1, 2026. NASA/Brandon Hancock' },
+      text: [
+        'Apollo flew on Saturn V: 111 m tall, able to throw 48.6 tonnes toward the Moon.',
+        'Artemis uses the <strong>Space Launch System</strong>. At 98 m it has more liftoff thrust than any rocket that has carried people, but it sends only 27 tonnes toward the Moon. That is why the landers fly on their own rockets.',
+        'In February 2026 NASA cancelled the larger Block 1B and Block 2 versions to keep a single configuration, Block 1.',
+      ],
+      compare: {
+        left:  { label: 'Saturn V', tone: 'warm', rows: [['Height', '111 m'], ['Liftoff thrust', '35 MN'], ['To the Moon', '48.6 t'], ['Crew', '3'], ['Flights', '13'], ['First flight', '1967']] },
+        right: { label: 'SLS Block 1', tone: 'accent', rows: [['Height', '98 m'], ['Liftoff thrust', '39 MN'], ['To the Moon', '27 t'], ['Crew', '4'], ['Flights', '2'], ['First flight', '2022']] },
+      },
+      draw: drawRocketsScene, model: 'sls', modelLabel: 'Space Launch System',
+    },
+    {
+      chapter: 'The landers', title: 'Two landers, one seat',
+      bg: { id: '11 03 24  orion transfer', credit: 'Artist\'s concept of Starship HLS. SpaceX' },
+      text: [
+        'NASA chose competition. SpaceX\'s Starship HLS won in 2021 and Blue Origin\'s Blue Moon was added in 2023. Both must dock with Orion on Artemis III before either carries astronauts down, and the one that is ready first flies Artemis IV.',
+        '<strong>Starship HLS</strong> is about 52 m tall and designed to put roughly 100 tonnes on the surface. It has to be refueled in orbit, a step SpaceX has not yet demonstrated.',
+        '<strong>Blue Moon Mark 2</strong> is 16 m tall, burns hydrogen and oxygen and is built for stays of up to 30 days. A smaller cargo lander, Mark 1, goes first as a pathfinder, targeted for 2027.',
+      ],
+      compare: {
+        left:  { label: 'Starship HLS', tone: 'accent', rows: [['Height', '~52 m'], ['Diameter', '9 m'], ['Propellant', 'Methane, oxygen'], ['To the surface', '~100 t'], ['Selected', '2021']] },
+        right: { label: 'Blue Moon Mark 2', tone: 'cool', rows: [['Height', '16 m'], ['Engines', '3 × BE-7'], ['Propellant', 'Hydrogen, oxygen'], ['Surface stay', 'Up to 30 days'], ['Selected', '2023']] },
+      },
+      draw: drawLandersScene, model: 'starship', modelLabel: 'Starship, the ship that becomes HLS',
+    },
+    {
+      chapter: 'The destination', title: 'The Moon\'s south pole',
+      bg: { id: 'art002e009287', credit: 'Earthset over the lunar limb, Artemis II, Apr 6, 2026. NASA' },
+      text: [
+        'Apollo landed near the equator. Artemis goes to the <strong>south pole</strong>, where craters like Shackleton have rims in near-constant sunlight while their floors have been dark for billions of years.',
+        'Those permanently shadowed regions hold water ice. NASA\'s LCROSS probe found water there in 2009. Ice means drinking water, breathable oxygen and rocket fuel, the reasons a base is possible at all.',
+        'NASA has narrowed the choice to landing regions within a few degrees of the pole.',
+      ],
+      stats: [
+        { label: 'Shackleton Crater width', val: '21', unit: 'km', sub: '4.2 km deep' },
+        { label: 'Latitude of Shackleton', val: '89.9°', unit: 'S', sub: 'Almost exactly at the pole' },
+        { label: 'Water ice found by LCROSS', val: '2009', sub: 'Impact in a shadowed crater' },
+        { label: 'Landing regions searched', val: '6°', sub: 'Of latitude around the pole' },
       ],
       draw: drawLandingSiteScene,
     },
-
-    // ══ 6: THE DSN ════════════════════════════════════════════════════════════
     {
-      chapter: 'THE NETWORK',
-      title: 'The Eyes That Never Sleep',
-      text: `Every transmission between Orion and Earth passes through the <strong>Deep Space Network</strong> — three complexes placed 120° apart around the globe so at least one always faces the Moon.
-<br><br><strong>Goldstone</strong> in California's Mojave Desert. <strong>Madrid</strong> in Robledo de Chavela, Spain. <strong>Canberra</strong> in Tidbinbilla, Australia. Each has dishes up to 70m across — the largest steerable radio antennas on Earth.
-<br><br>At lunar distance, signals arrive at <strong>–159 dBW</strong> — a billionth of a billionth of a watt. The 70m dishes can pull a <strong>4 Mbps</strong> data stream from this whisper. During critical events — PDI, touchdown, EVAs — all three complexes point at the Moon simultaneously.`,
+      chapter: 'Staying', title: 'From flags and footprints to a base',
+      bg: { id: 'KSC-20260709-PH-JBS02_0026', credit: 'Artemis III booster segment arrives at the Vehicle Assembly Building, Jul 9, 2026. NASA/Ben Smegelsky' },
+      text: [
+        'Apollo visited. Artemis wants to stay. In March 2026 NASA cancelled the Lunar Gateway, the planned station in lunar orbit, and moved its focus to a base on the surface.',
+        'Artemis V, planned for late 2028, is expected to begin that work. Behind it is an international effort: as of September 26, 2026, <strong>76 countries</strong> have signed the Artemis Accords, a set of principles for peaceful exploration.',
+        'The hardware is being stacked right now. The first real test comes in orbit.',
+      ],
       stats: [
-        { label: 'DSN complexes', val: '3', sub: 'Goldstone · Madrid · Canberra' },
-        { label: 'Spacing', val: '120°', sub: 'Continuous sky coverage' },
-        { label: 'Largest dish', val: '70', unit: 'm', sub: 'Goldstone & Canberra DSS-43' },
-        { label: 'Data rate (lunar)', val: '4', unit: 'Mbps', sub: 'At 384,000 km' },
+        { label: 'Countries in the Artemis Accords', val: '76', sub: 'As of Sep 26, 2026' },
+        { label: 'Lunar Gateway cancelled', val: 'Mar 2026', sub: 'Focus moves to the surface' },
+        { label: 'Artemis V', val: 'Late 2028', sub: 'Second landing, first base work' },
+        { label: 'Artemis III boosters', val: 'Stacking', sub: 'Began Jul 13, 2026 in the VAB' },
+      ],
+      draw: drawProgramScene,
+    },
+    {
+      chapter: 'The network', title: 'Staying in touch',
+      bg: { id: 'PIA26147', credit: 'Six antennas at the Madrid complex arrayed for the first time, Apr 2024. NASA/JPL, MDSCC/INTA' },
+      text: [
+        'Every message to and from deep space passes through NASA\'s <strong>Deep Space Network</strong>: three sites spread roughly 120° apart, at Goldstone in California, Madrid in Spain and Canberra in Australia. One of them always faces the Moon.',
+        'Each site has a 70 m dish plus several 34 m dishes. A signal from the Moon takes about 1.28 seconds to arrive.',
+        'Artemis II also tested laser communication. Orion\'s optical terminal sent data to ground stations in California and New Mexico, a preview of faster links on later missions.',
+      ],
+      stats: [
+        { label: 'DSN complexes', val: '3', sub: 'Goldstone, Madrid, Canberra' },
+        { label: 'Spacing', val: '~120°', sub: 'Continuous sky coverage' },
+        { label: 'Largest dish', val: '70', unit: 'm', sub: 'One at each complex' },
+        { label: 'One-way light time to the Moon', val: '1.28', unit: 's', sub: 'At the average distance' },
       ],
       draw: drawDSNScene,
     },
+  ];
 
-  ]; // end SCENES
+  // ── Engine ─────────────────────────────────────────────────────────────────
+  let current = 0, animId = null, startT = null, overlay = null, stCanvas = null, stCtx = null;
+  let lastFocus = null, modelManifest = null, bgLayer = 0, touchX = null;
 
-  // ─── Scene draw functions ───────────────────────────────────────────────────
-
-  function drawTimelineScene(ctx, W, H, t) {
-    ctx.clearRect(0, 0, W, H);
-    drawStarfield(ctx, W, H, 7);
-
-    const cy    = H * 0.5;
-    const x0    = W * 0.06;
-    const x1    = W * 0.94;
-    const totalYears = 2030 - 1960;
-
-    function yearX(y) { return x0 + (y - 1960) / totalYears * (x1 - x0); }
-
-    // Timeline axis
-    ctx.beginPath();
-    ctx.moveTo(x0, cy);
-    ctx.lineTo(x1, cy);
-    ctx.strokeStyle = 'rgba(255,255,255,0.15)';
-    ctx.lineWidth   = 1;
-    ctx.stroke();
-
-    // Decade ticks
-    for (let yr = 1960; yr <= 2030; yr += 10) {
-      const x = yearX(yr);
-      ctx.beginPath(); ctx.moveTo(x, cy - 6); ctx.lineTo(x, cy + 6);
-      ctx.strokeStyle = 'rgba(255,255,255,0.2)'; ctx.lineWidth = 1; ctx.stroke();
-      ctx.font = '9px monospace'; ctx.fillStyle = 'rgba(255,255,255,0.25)';
-      ctx.textAlign = 'center'; ctx.fillText(yr, x, cy + 20);
-    }
-
-    // Apollo era bar (1969–1972)
-    const ax0 = yearX(1969), ax1 = yearX(1972);
-    const prog1 = Math.min(1, Math.max(0, (t - 300) / 600));
-    ctx.fillStyle = 'rgba(245,200,66,0.25)';
-    ctx.fillRect(ax0, cy - 22, (ax1 - ax0) * easeInOut(prog1), 44);
-    ctx.strokeStyle = 'rgba(245,200,66,0.6)'; ctx.lineWidth = 1.5;
-    ctx.strokeRect(ax0, cy - 22, (ax1 - ax0) * easeInOut(prog1), 44);
-    if (prog1 > 0.3) {
-      ctx.font = '9px monospace'; ctx.fillStyle = 'rgba(245,200,66,0.9)';
-      ctx.textAlign = 'center'; ctx.fillText('APOLLO', (ax0 + ax1) / 2, cy - 30);
-      ctx.fillText('1969–1972', (ax0 + ax1) / 2, cy - 18);
-    }
-
-    // The silence
-    const sx0 = yearX(1972), sx1 = yearX(2022);
-    const prog2 = Math.min(1, Math.max(0, (t - 700) / 800));
-    const silW  = (sx1 - sx0) * easeInOut(prog2);
-    const grad  = ctx.createLinearGradient(sx0, 0, sx0 + silW, 0);
-    grad.addColorStop(0, 'rgba(60,0,0,0.15)');
-    grad.addColorStop(1, 'rgba(60,0,0,0.35)');
-    ctx.fillStyle = grad;
-    ctx.fillRect(sx0, cy - 10, silW, 20);
-    if (prog2 > 0.5) {
-      ctx.font = 'bold 14px monospace';
-      ctx.fillStyle = `rgba(180,50,50,${prog2 * 0.8})`;
-      ctx.textAlign = 'center';
-      ctx.fillText('54 YEARS — NO HUMANS ON THE MOON', (sx0 + sx0 + silW) / 2, cy);
-    }
-
-    // Artemis era bar (2022–2030+)
-    const emx0 = yearX(2022), emx1 = yearX(2030);
-    const prog3 = Math.min(1, Math.max(0, (t - 1400) / 600));
-    ctx.fillStyle = 'rgba(0,170,255,0.2)';
-    ctx.fillRect(emx0, cy - 22, (emx1 - emx0) * easeInOut(prog3), 44);
-    ctx.strokeStyle = 'rgba(0,170,255,0.7)'; ctx.lineWidth = 1.5;
-    ctx.strokeRect(emx0, cy - 22, (emx1 - emx0) * easeInOut(prog3), 44);
-    if (prog3 > 0.3) {
-      ctx.font = '9px monospace'; ctx.fillStyle = 'rgba(0,170,255,0.9)';
-      ctx.textAlign = 'center'; ctx.fillText('ARTEMIS', (emx0 + emx0 + (emx1-emx0)*easeInOut(prog3)) / 2, cy - 30);
-    }
-
-    // Artemis mission markers
-    const missions = [
-      { yr: 2022.9, label: 'I', sub: 'Uncrewed' },
-      { yr: 2025.5, label: 'II', sub: 'Crewed orbit' },
-      { yr: 2026.5, label: 'III', sub: 'LANDING' },
-    ];
-    if (prog3 > 0.5) {
-      missions.forEach((m, i) => {
-        const mx    = yearX(m.yr);
-        const blink = m.label === 'III' ? 0.6 + 0.4 * Math.sin(t / 500) : 1;
-        const a     = Math.min(1, (prog3 - 0.5) * 2);
-        ctx.beginPath(); ctx.arc(mx, cy, 5, 0, Math.PI * 2);
-        ctx.fillStyle = m.label === 'III' ? `rgba(0,255,200,${a * blink})` : `rgba(0,170,255,${a})`;
-        ctx.fill();
-        ctx.font = m.label === 'III' ? 'bold 10px monospace' : '9px monospace';
-        ctx.fillStyle = m.label === 'III' ? `rgba(0,255,200,${a})` : `rgba(0,170,255,${a})`;
-        ctx.textAlign = 'center';
-        ctx.fillText('A' + m.label, mx, cy - 14);
-        ctx.font = '8px monospace'; ctx.fillStyle = `rgba(255,255,255,${a * 0.6})`;
-        ctx.fillText(m.sub, mx, cy + 30);
-      });
-    }
-
-    // Apollo mission dots
-    const apollos = [1969.5, 1969.9, 1971.1, 1971.7, 1972.2, 1972.9];
-    if (prog1 > 0.5) {
-      apollos.forEach(yr => {
-        const ax = yearX(yr);
-        ctx.beginPath(); ctx.arc(ax, cy, 3, 0, Math.PI * 2);
-        ctx.fillStyle = 'rgba(245,200,66,0.8)'; ctx.fill();
-      });
-    }
-  }
-
-  function drawRocketsScene(ctx, W, H, t) {
-    ctx.clearRect(0, 0, W, H);
-    drawStarfield(ctx, W, H, 13);
-
-    const prog = Math.min(1, t / 1200);
-    const ground = H * 0.88;
-    const maxH   = H * 0.75;
-
-    // Saturn V (left)
-    const sv_h   = maxH * 0.96; // 111m
-    const sls_h  = maxH * 0.85; // 98m
-    const sv_x   = W * 0.28;
-    const sls_x  = W * 0.72;
-    const sv_w   = 30;
-    const sls_w  = 28;
-
-    // Ground line
-    ctx.beginPath(); ctx.moveTo(W * 0.1, ground); ctx.lineTo(W * 0.9, ground);
-    ctx.strokeStyle = 'rgba(255,255,255,0.1)'; ctx.lineWidth = 1; ctx.stroke();
-
-    const sv_drawn  = sv_h  * easeInOut(prog);
-    const sls_drawn = sls_h * easeInOut(prog);
-
-    // Saturn V body
-    const svGrad = ctx.createLinearGradient(sv_x - sv_w, 0, sv_x + sv_w, 0);
-    svGrad.addColorStop(0, 'rgba(200,190,170,0.6)');
-    svGrad.addColorStop(0.5, 'rgba(240,235,220,0.9)');
-    svGrad.addColorStop(1, 'rgba(160,150,130,0.6)');
-    ctx.fillStyle = svGrad;
-    ctx.fillRect(sv_x - sv_w / 2, ground - sv_drawn, sv_w, sv_drawn);
-
-    // Saturn V black bands
-    if (prog > 0.3) {
-      ctx.fillStyle = 'rgba(0,0,0,0.6)';
-      [0.25, 0.5, 0.72].forEach(frac => {
-        ctx.fillRect(sv_x - sv_w / 2, ground - sv_drawn * frac - 4, sv_w, 8);
-      });
-    }
-
-    // Saturn V nose cone
-    ctx.beginPath();
-    ctx.moveTo(sv_x - sv_w / 2, ground - sv_drawn);
-    ctx.lineTo(sv_x, ground - sv_drawn - 24);
-    ctx.lineTo(sv_x + sv_w / 2, ground - sv_drawn);
-    ctx.fillStyle = 'rgba(200,190,170,0.8)'; ctx.fill();
-
-    // SLS body
-    const slsGrad = ctx.createLinearGradient(sls_x - sls_w, 0, sls_x + sls_w, 0);
-    slsGrad.addColorStop(0, 'rgba(160,180,255,0.5)');
-    slsGrad.addColorStop(0.5, 'rgba(220,230,255,0.9)');
-    slsGrad.addColorStop(1, 'rgba(100,120,200,0.5)');
-    ctx.fillStyle = slsGrad;
-    ctx.fillRect(sls_x - sls_w / 2, ground - sls_drawn, sls_w, sls_drawn);
-
-    // SLS orange core
-    if (prog > 0.2) {
-      const og = ctx.createLinearGradient(sls_x - sls_w / 2, 0, sls_x + sls_w / 2, 0);
-      og.addColorStop(0, 'rgba(255,100,0,0.4)');
-      og.addColorStop(0.5, 'rgba(255,140,0,0.7)');
-      og.addColorStop(1, 'rgba(255,100,0,0.4)');
-      ctx.fillStyle = og;
-      ctx.fillRect(sls_x - sls_w / 2, ground - sls_drawn * 0.6, sls_w, sls_drawn * 0.55);
-    }
-
-    // SLS Orion on top
-    if (prog > 0.5) {
-      ctx.beginPath();
-      ctx.moveTo(sls_x - 12, ground - sls_drawn);
-      ctx.lineTo(sls_x, ground - sls_drawn - 30);
-      ctx.lineTo(sls_x + 12, ground - sls_drawn);
-      ctx.fillStyle = 'rgba(100,160,255,0.8)'; ctx.fill();
-    }
-
-    // Height labels
-    if (prog > 0.7) {
-      const a = (prog - 0.7) / 0.3;
-      ctx.font = 'bold 13px monospace';
-      ctx.fillStyle = `rgba(240,235,220,${a})`;
-      ctx.textAlign = 'center';
-      ctx.fillText('111 m', sv_x, ground - sv_drawn - 36);
-      ctx.fillStyle = `rgba(200,220,255,${a})`;
-      ctx.fillText('98 m', sls_x, ground - sls_drawn - 44);
-    }
-
-    // Labels below
-    if (prog > 0.4) {
-      const a = Math.min(1, (prog - 0.4) / 0.4);
-      ctx.textAlign = 'center';
-      ctx.font = 'bold 11px monospace';
-      ctx.fillStyle = `rgba(245,200,66,${a})`; ctx.fillText('SATURN V', sv_x, ground + 20);
-      ctx.font = '9px monospace'; ctx.fillStyle = `rgba(245,200,66,${a * 0.6})`;
-      ctx.fillText('Apollo · 1967–1973', sv_x, ground + 34);
-      ctx.font = 'bold 11px monospace';
-      ctx.fillStyle = `rgba(100,180,255,${a})`; ctx.fillText('SLS BLOCK 1B', sls_x, ground + 20);
-      ctx.font = '9px monospace'; ctx.fillStyle = `rgba(100,180,255,${a * 0.6})`;
-      ctx.fillText('Artemis · 2022–', sls_x, ground + 34);
-    }
-
-    // Human scale figure
-    if (prog > 0.8) {
-      const a = (prog - 0.8) / 0.2;
-      const hx = W * 0.5;
-      ctx.strokeStyle = `rgba(255,255,255,${a * 0.5})`;
-      ctx.lineWidth = 1.5;
-      // stick figure 6 pixels tall (representing 1.8m vs ~100m)
-      const scale = sv_drawn / 111 * 1.8;
-      ctx.beginPath(); ctx.arc(hx, ground - scale * 1.7, scale * 0.3, 0, Math.PI * 2);
-      ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(hx, ground - scale * 1.4); ctx.lineTo(hx, ground - scale * 0.6);
-      ctx.moveTo(hx - scale * 0.4, ground - scale); ctx.lineTo(hx + scale * 0.4, ground - scale);
-      ctx.moveTo(hx, ground - scale * 0.6); ctx.lineTo(hx - scale * 0.3, ground);
-      ctx.moveTo(hx, ground - scale * 0.6); ctx.lineTo(hx + scale * 0.3, ground);
-      ctx.stroke();
-      ctx.font = '8px monospace'; ctx.fillStyle = `rgba(255,255,255,${a * 0.4})`;
-      ctx.textAlign = 'center'; ctx.fillText('1.8 m', hx, ground + 14);
-    }
-  }
-
-  function drawTrajectoryScene(ctx, W, H, t) {
-    ctx.clearRect(0, 0, W, H);
-    drawStarfield(ctx, W, H, 99);
-
-    const ex = W * 0.14, ey = H * 0.5;
-    const mx = W * 0.86, my = H * 0.5;
-    const er = 28, mr = 18;
-    const cp1x = W * 0.35, cp1y = H * 0.12;
-    const cp2x = W * 0.65, cp2y = H * 0.88;
-
-    // Earth
-    const earthG = ctx.createRadialGradient(ex - 6, ey - 8, 2, ex, ey, er);
-    earthG.addColorStop(0, '#3a7abf');
-    earthG.addColorStop(0.4, '#1e5799');
-    earthG.addColorStop(0.8, '#0a2a5c');
-    earthG.addColorStop(1, '#05152e');
-    ctx.beginPath(); ctx.arc(ex, ey, er, 0, Math.PI * 2);
-    ctx.fillStyle = earthG; ctx.fill();
-    // atmosphere
-    const atm = ctx.createRadialGradient(ex, ey, er, ex, ey, er + 8);
-    atm.addColorStop(0, 'rgba(100,180,255,0.3)'); atm.addColorStop(1, 'transparent');
-    ctx.beginPath(); ctx.arc(ex, ey, er + 8, 0, Math.PI * 2);
-    ctx.fillStyle = atm; ctx.fill();
-
-    // Moon
-    const moonG = ctx.createRadialGradient(mx - 4, my - 4, 2, mx, my, mr);
-    moonG.addColorStop(0, '#c8c0b4');
-    moonG.addColorStop(0.6, '#9a9288');
-    moonG.addColorStop(1, '#6e6860');
-    ctx.beginPath(); ctx.arc(mx, my, mr, 0, Math.PI * 2);
-    ctx.fillStyle = moonG; ctx.fill();
-
-    // Apollo trajectory (dotted gold, slightly different arc)
-    ctx.save();
-    ctx.setLineDash([4, 6]);
-    ctx.beginPath();
-    ctx.moveTo(ex + er, ey);
-    ctx.bezierCurveTo(cp1x + 10, cp1y - 20, cp2x + 10, cp2y + 20, mx - mr, my);
-    ctx.strokeStyle = 'rgba(245,200,66,0.3)';
-    ctx.lineWidth = 1;
-    ctx.stroke();
-    ctx.restore();
-
-    // Artemis trajectory
-    const speed    = 0.00025;
-    const progress = ((t * speed) % 1);
-
-    // Draw trail up to progress
-    const steps = 120;
-    for (let i = 0; i < steps; i++) {
-      const p0 = i / steps * progress;
-      const p1 = (i + 1) / steps * progress;
-      if (p1 <= 0) continue;
-      const [x0, y0] = bezierPoint(ex + er, ey, cp1x, cp1y, cp2x, cp2y, mx - mr, my, p0);
-      const [x1, y1] = bezierPoint(ex + er, ey, cp1x, cp1y, cp2x, cp2y, mx - mr, my, p1);
-      const fade = i / steps;
-      ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1);
-      ctx.strokeStyle = `rgba(0,220,180,${fade * 0.8})`;
-      ctx.lineWidth = 1.5; ctx.stroke();
-    }
-
-    // Orion capsule dot
-    const [ox, oy] = bezierPoint(ex + er, ey, cp1x, cp1y, cp2x, cp2y, mx - mr, my, progress);
-    const orionGlow = ctx.createRadialGradient(ox, oy, 0, ox, oy, 10);
-    orionGlow.addColorStop(0, 'rgba(0,255,200,0.6)');
-    orionGlow.addColorStop(1, 'transparent');
-    ctx.beginPath(); ctx.arc(ox, oy, 10, 0, Math.PI * 2);
-    ctx.fillStyle = orionGlow; ctx.fill();
-    ctx.beginPath(); ctx.arc(ox, oy, 4, 0, Math.PI * 2);
-    ctx.fillStyle = '#00ffc8'; ctx.fill();
-
-    // Velocity readout
-    const velKms = (10.8 * (1 - progress * 0.65)).toFixed(2);
-    ctx.font = '10px monospace'; ctx.fillStyle = 'rgba(0,255,200,0.7)';
-    ctx.textAlign = 'left';
-    ctx.fillText(`ORION  ${velKms} km/s`, ox + 12, oy - 6);
-
-    // Labels
-    ctx.font = '9px monospace'; ctx.fillStyle = 'rgba(100,180,255,0.7)';
-    ctx.textAlign = 'center'; ctx.fillText('EARTH', ex, ey + er + 14);
-    ctx.fillStyle = 'rgba(200,200,200,0.7)'; ctx.fillText('MOON', mx, my + mr + 14);
-    ctx.fillStyle = 'rgba(245,200,66,0.4)'; ctx.fillText('Apollo 11 1969', (ex + mx) / 2, H * 0.08);
-    ctx.fillStyle = 'rgba(0,220,180,0.5)'; ctx.fillText('Artemis III 2026', (ex + mx) / 2, H * 0.92);
-  }
-
-  function bezierPoint(x0, y0, cx1, cy1, cx2, cy2, x1, y1, t) {
-    const mt = 1 - t;
-    const x  = mt*mt*mt*x0 + 3*mt*mt*t*cx1 + 3*mt*t*t*cx2 + t*t*t*x1;
-    const y  = mt*mt*mt*y0 + 3*mt*mt*t*cy1 + 3*mt*t*t*cy2 + t*t*t*y1;
-    return [x, y];
-  }
-
-  function drawNRHOScene(ctx, W, H, t) {
-    ctx.clearRect(0, 0, W, H);
-    drawStarfield(ctx, W, H, 55);
-
-    const mx = W * 0.42, my = H * 0.5;
-    const mr = 30;
-
-    // Moon
-    const moonG = ctx.createRadialGradient(mx - 6, my - 8, 3, mx, my, mr);
-    moonG.addColorStop(0, '#d0c8bc');
-    moonG.addColorStop(0.6, '#a09890');
-    moonG.addColorStop(1, '#706860');
-    ctx.beginPath(); ctx.arc(mx, my, mr, 0, Math.PI * 2);
-    ctx.fillStyle = moonG; ctx.fill();
-
-    // NRHO is a highly elliptical orbit tilted ~90° to lunar equator
-    // Approximate: a vertical oval, periapsis at south
-    const nrA   = H * 0.44;   // semi-major (vertical)
-    const nrB   = W * 0.22;   // semi-minor (horizontal)
-    const cx    = mx + nrB * 0.1;
-    const cy    = my + mr * 0.3;
-
-    // Draw NRHO orbit
-    ctx.save();
-    ctx.beginPath();
-    ctx.ellipse(cx, cy, nrB, nrA, 0, 0, Math.PI * 2);
-    ctx.strokeStyle = 'rgba(0,170,255,0.25)';
-    ctx.setLineDash([4, 5]);
-    ctx.lineWidth = 1;
-    ctx.stroke();
-    ctx.restore();
-
-    // Animated Orion on NRHO
-    const ang  = -(t * 0.0003) % (Math.PI * 2);
-    const ox   = cx + nrB * Math.cos(ang);
-    const oy   = cy + nrA * Math.sin(ang);
-
-    // Trail
-    const trailSteps = 60;
-    for (let i = 0; i < trailSteps; i++) {
-      const a0 = ang - (i + 1) * 0.05;
-      const a1 = ang - i * 0.05;
-      const tx0 = cx + nrB * Math.cos(a0), ty0 = cy + nrA * Math.sin(a0);
-      const tx1 = cx + nrB * Math.cos(a1), ty1 = cy + nrA * Math.sin(a1);
-      ctx.beginPath(); ctx.moveTo(tx0, ty0); ctx.lineTo(tx1, ty1);
-      ctx.strokeStyle = `rgba(0,170,255,${(trailSteps - i) / trailSteps * 0.5})`;
-      ctx.lineWidth = 1.5; ctx.stroke();
-    }
-
-    // Orion dot
-    const og = ctx.createRadialGradient(ox, oy, 0, ox, oy, 9);
-    og.addColorStop(0, 'rgba(0,200,255,0.7)'); og.addColorStop(1, 'transparent');
-    ctx.beginPath(); ctx.arc(ox, oy, 9, 0, Math.PI * 2); ctx.fillStyle = og; ctx.fill();
-    ctx.beginPath(); ctx.arc(ox, oy, 3.5, 0, Math.PI * 2); ctx.fillStyle = '#00c8ff'; ctx.fill();
-
-    // Starship HLS waiting on orbit (opposite phase)
-    const sa  = ang + Math.PI * 0.7;
-    const shx = cx + nrB * Math.cos(sa);
-    const shy = cy + nrA * Math.sin(sa);
-    const sg  = ctx.createRadialGradient(shx, shy, 0, shx, shy, 8);
-    sg.addColorStop(0, 'rgba(255,140,0,0.6)'); sg.addColorStop(1, 'transparent');
-    ctx.beginPath(); ctx.arc(shx, shy, 8, 0, Math.PI * 2); ctx.fillStyle = sg; ctx.fill();
-    ctx.beginPath(); ctx.arc(shx, shy, 3, 0, Math.PI * 2); ctx.fillStyle = '#ff9040'; ctx.fill();
-
-    // Labels
-    ctx.font = '9px monospace';
-    ctx.fillStyle = 'rgba(0,200,255,0.8)'; ctx.textAlign = 'left';
-    ctx.fillText('ORION', ox + 10, oy - 4);
-    ctx.fillStyle = 'rgba(255,140,0,0.8)';
-    ctx.fillText('STARSHIP HLS', shx + 10, shy - 4);
-
-    // Dimension lines
-    ctx.strokeStyle = 'rgba(255,255,255,0.12)'; ctx.lineWidth = 1;
-    ctx.setLineDash([3, 4]);
-    ctx.beginPath(); ctx.moveTo(cx, cy - nrA); ctx.lineTo(W * 0.78, cy - nrA);
-    ctx.moveTo(cx, cy + nrA); ctx.lineTo(W * 0.78, cy + nrA);
-    ctx.stroke();
-    ctx.setLineDash([]);
-
-    ctx.font = '9px monospace'; ctx.fillStyle = 'rgba(255,255,255,0.4)';
-    ctx.textAlign = 'left';
-    ctx.fillText('APOLUNE  70,000 km', W * 0.78 - 100, cy - nrA - 6);
-    ctx.fillText('PERILUNE  3,000 km', W * 0.78 - 100, cy + nrA + 14);
-
-    ctx.fillStyle = 'rgba(200,200,200,0.6)'; ctx.textAlign = 'center';
-    ctx.fillText('MOON', mx, my + mr + 14);
-  }
-
-  function drawLandersScene(ctx, W, H, t) {
-    ctx.clearRect(0, 0, W, H);
-    drawStarfield(ctx, W, H, 77);
-
-    const ground = H * 0.84;
-    const prog   = Math.min(1, t / 1000);
-    const sx     = W * 0.3;
-    const bx     = W * 0.72;
-
-    // Ground surface (Moon-like)
-    ctx.fillStyle = 'rgba(120,110,100,0.15)';
-    ctx.fillRect(0, ground, W, H - ground);
-    ctx.beginPath(); ctx.moveTo(0, ground); ctx.lineTo(W, ground);
-    ctx.strokeStyle = 'rgba(180,170,160,0.2)'; ctx.lineWidth = 1; ctx.stroke();
-
-    const sh = H * 0.68 * easeInOut(prog);
-    const bh = H * 0.36 * easeInOut(prog);
-
-    // ── Starship HLS ──
-    // Legs (3 visible)
-    if (prog > 0.3) {
-      const la = (prog - 0.3) / 0.7;
-      ctx.strokeStyle = `rgba(180,200,255,${la * 0.6})`; ctx.lineWidth = 2;
-      [[-28, 14], [0, 16], [28, 14]].forEach(([dx, dy]) => {
-        ctx.beginPath();
-        ctx.moveTo(sx, ground - sh * 0.05);
-        ctx.lineTo(sx + dx, ground + dy * la);
-        ctx.stroke();
-      });
-    }
-    // Body
-    const sg = ctx.createLinearGradient(sx - 18, 0, sx + 18, 0);
-    sg.addColorStop(0, 'rgba(140,160,200,0.5)');
-    sg.addColorStop(0.5, 'rgba(210,220,240,0.9)');
-    sg.addColorStop(1, 'rgba(100,120,180,0.5)');
-    ctx.fillStyle = sg;
-    ctx.fillRect(sx - 18, ground - sh, 36, sh * 0.85);
-    // Nose
-    ctx.beginPath();
-    ctx.moveTo(sx - 18, ground - sh);
-    ctx.lineTo(sx, ground - sh - 28);
-    ctx.lineTo(sx + 18, ground - sh);
-    ctx.fillStyle = 'rgba(180,200,240,0.8)'; ctx.fill();
-    // Fins
-    if (prog > 0.5) {
-      [[1, -1], [1, 1]].forEach(([sx2, side]) => {
-        ctx.beginPath();
-        ctx.moveTo(sx + side * 18, ground - sh * 0.15);
-        ctx.lineTo(sx + side * 38, ground - sh * 0.02);
-        ctx.lineTo(sx + side * 18, ground - sh * 0.28);
-        ctx.fillStyle = 'rgba(140,160,220,0.5)'; ctx.fill();
-      });
-    }
-
-    // ── Blue Moon ──
-    if (prog > 0.15) {
-      const ba = Math.min(1, (prog - 0.15) / 0.7);
-      const bdrawn = bh * easeInOut(ba);
-      // Legs
-      [[-24, 12], [0, 14], [24, 12]].forEach(([dx, dy]) => {
-        ctx.strokeStyle = `rgba(100,220,255,${ba * 0.6})`; ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.moveTo(bx, ground - bdrawn * 0.08);
-        ctx.lineTo(bx + dx, ground + dy * ba);
-        ctx.stroke();
-      });
-      // Descent stage (wider)
-      const bg2 = ctx.createLinearGradient(bx - 22, 0, bx + 22, 0);
-      bg2.addColorStop(0, 'rgba(0,100,160,0.5)');
-      bg2.addColorStop(0.5, 'rgba(60,180,255,0.85)');
-      bg2.addColorStop(1, 'rgba(0,80,140,0.5)');
-      ctx.fillStyle = bg2;
-      ctx.fillRect(bx - 22, ground - bdrawn * 0.55, 44, bdrawn * 0.5);
-      // Ascent stage (narrower, on top)
-      const ag2 = ctx.createLinearGradient(bx - 14, 0, bx + 14, 0);
-      ag2.addColorStop(0, 'rgba(60,160,255,0.6)');
-      ag2.addColorStop(0.5, 'rgba(120,210,255,0.9)');
-      ag2.addColorStop(1, 'rgba(40,140,220,0.6)');
-      ctx.fillStyle = ag2;
-      ctx.fillRect(bx - 14, ground - bdrawn, 28, bdrawn * 0.5);
-      // Dome on top
-      ctx.beginPath();
-      ctx.arc(bx, ground - bdrawn, 14, Math.PI, 0);
-      ctx.fillStyle = 'rgba(120,210,255,0.6)'; ctx.fill();
-
-      // Label
-      ctx.font = 'bold 10px monospace'; ctx.fillStyle = `rgba(60,180,255,${ba})`;
-      ctx.textAlign = 'center'; ctx.fillText('BLUE MOON MK1', bx, ground + 24);
-      ctx.font = '8px monospace'; ctx.fillStyle = `rgba(60,180,255,${ba * 0.6})`;
-      ctx.fillText('ARTEMIS V (Blue Origin)', bx, ground + 36);
-    }
-
-    // Labels Starship
-    if (prog > 0.6) {
-      const a = (prog - 0.6) / 0.4;
-      ctx.font = 'bold 10px monospace'; ctx.fillStyle = `rgba(180,200,255,${a})`;
-      ctx.textAlign = 'center'; ctx.fillText('STARSHIP HLS', sx, ground + 24);
-      ctx.font = '8px monospace'; ctx.fillStyle = `rgba(180,200,255,${a * 0.6})`;
-      ctx.fillText('ARTEMIS III (SpaceX)', sx, ground + 36);
-      ctx.fillStyle = `rgba(255,255,255,${a * 0.4})`;
-      ctx.fillText('~50 m', sx, ground - sh - 40);
-      ctx.fillText('~16 m', bx, ground - bh - 10);
-    }
-
-    // Human scale figure
-    if (prog > 0.85) {
-      const a   = (prog - 0.85) / 0.15;
-      const hx  = W * 0.5;
-      const scale = (sh / (50 / 1.8));
-      ctx.strokeStyle = `rgba(255,255,255,${a * 0.5})`; ctx.lineWidth = 1.5;
-      ctx.beginPath(); ctx.arc(hx, ground - scale * 1.7, scale * 0.3, 0, Math.PI * 2); ctx.stroke();
-      ctx.beginPath();
-      ctx.moveTo(hx, ground - scale * 1.4); ctx.lineTo(hx, ground - scale * 0.6);
-      ctx.moveTo(hx - scale * 0.4, ground - scale); ctx.lineTo(hx + scale * 0.4, ground - scale);
-      ctx.moveTo(hx, ground - scale * 0.6); ctx.lineTo(hx - scale * 0.3, ground);
-      ctx.moveTo(hx, ground - scale * 0.6); ctx.lineTo(hx + scale * 0.3, ground);
-      ctx.stroke();
-    }
-  }
-
-  function drawLandingSiteScene(ctx, W, H, t) {
-    ctx.clearRect(0, 0, W, H);
-
-    const cx = W * 0.5, cy = H * 0.52;
-    const r  = Math.min(W, H) * 0.38;
-
-    // Moon disk
-    const mg = ctx.createRadialGradient(cx - r * 0.2, cy - r * 0.2, r * 0.1, cx, cy, r);
-    mg.addColorStop(0, '#c8bfb4');
-    mg.addColorStop(0.5, '#9c9490');
-    mg.addColorStop(1, '#6e6860');
-    ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2);
-    ctx.fillStyle = mg; ctx.fill();
-
-    // Permanently shadowed regions (dark patches near pole)
-    const psrs = [
-      [0, -0.85, 0.22], [-0.3, -0.78, 0.14], [0.35, -0.80, 0.16],
-      [-0.1, -0.95, 0.10], [0.2, -0.70, 0.12],
-    ];
-    psrs.forEach(([px, py, pr]) => {
-      ctx.beginPath();
-      ctx.arc(cx + px * r, cy + py * r, pr * r, 0, Math.PI * 2);
-      ctx.fillStyle = 'rgba(20,10,5,0.7)'; ctx.fill();
-    });
-
-    // Craters
-    const craters = [
-      [0.1, -0.15, 0.08, 0.7], [-0.3, 0.2, 0.06, 0.6], [0.4, -0.3, 0.05, 0.5],
-      [-0.1, 0.45, 0.09, 0.5], [0.2, 0.35, 0.04, 0.6], [-0.45, -0.1, 0.07, 0.4],
-    ];
-    craters.forEach(([px, py, pr, a]) => {
-      ctx.beginPath(); ctx.arc(cx + px * r, cy + py * r, pr * r, 0, Math.PI * 2);
-      ctx.strokeStyle = `rgba(80,70,60,${a})`; ctx.lineWidth = 1; ctx.stroke();
-      ctx.fillStyle = `rgba(60,50,45,${a * 0.5})`; ctx.fill();
-    });
-
-    // Shackleton crater (highlight)
-    const shx = cx + 0.04 * r;
-    const shy = cy - 0.88 * r;
-    const shr = 0.10 * r;
-    const pulse = 0.7 + 0.3 * Math.sin(t / 600);
-    // crater bowl
-    ctx.beginPath(); ctx.arc(shx, shy, shr, 0, Math.PI * 2);
-    ctx.fillStyle = 'rgba(15,8,4,0.85)'; ctx.fill();
-    // rim glow
-    ctx.beginPath(); ctx.arc(shx, shy, shr, 0, Math.PI * 2);
-    ctx.strokeStyle = `rgba(0,255,200,${pulse * 0.8})`; ctx.lineWidth = 2; ctx.stroke();
-    // outer glow ring
-    ctx.beginPath(); ctx.arc(shx, shy, shr + 6, 0, Math.PI * 2);
-    ctx.strokeStyle = `rgba(0,255,200,${pulse * 0.25})`; ctx.lineWidth = 4; ctx.stroke();
-
-    // Apollo sites (tiny gold markers near equator)
-    const apolloSites = [
-      [-0.08, 0.06, 'A11'], [0.24, -0.04, 'A12'], [-0.35, -0.08, 'A14'],
-      [-0.18, -0.38, 'A15'], [0.30, -0.22, 'A16'], [0.12, -0.30, 'A17'],
-    ];
-    if (t > 800) {
-      const a = Math.min(1, (t - 800) / 400);
-      apolloSites.forEach(([px, py, label]) => {
-        const ax = cx + px * r, ay = cy + py * r;
-        ctx.beginPath(); ctx.arc(ax, ay, 3, 0, Math.PI * 2);
-        ctx.fillStyle = `rgba(245,200,66,${a * 0.7})`; ctx.fill();
-        ctx.font = '7px monospace'; ctx.fillStyle = `rgba(245,200,66,${a * 0.5})`;
-        ctx.textAlign = 'center'; ctx.fillText(label, ax, ay - 6);
-      });
-    }
-
-    // Labels
-    ctx.font = 'bold 10px monospace'; ctx.fillStyle = 'rgba(0,255,200,0.9)';
-    ctx.textAlign = 'left'; ctx.fillText('← SHACKLETON CRATER', shx + shr + 8, shy + 4);
-    ctx.font = '8px monospace'; ctx.fillStyle = 'rgba(0,255,200,0.55)';
-    ctx.fillText('89.5°S · Target landing zone', shx + shr + 8, shy + 17);
-
-    if (t > 800) {
-      ctx.font = '8px monospace'; ctx.fillStyle = 'rgba(245,200,66,0.55)';
-      ctx.textAlign = 'center';
-      ctx.fillText('Apollo sites (equatorial)', cx, cy + r * 0.55);
-    }
-
-    // PSR label
-    ctx.font = '8px monospace'; ctx.fillStyle = 'rgba(150,130,120,0.5)';
-    ctx.textAlign = 'center'; ctx.fillText('Permanently Shadowed Regions', cx - r * 0.15, cy - r * 0.62);
-
-    // North/South labels
-    ctx.font = '9px monospace'; ctx.fillStyle = 'rgba(255,255,255,0.3)';
-    ctx.textAlign = 'center';
-    ctx.fillText('SOUTH POLE', cx, cy - r - 10);
-    ctx.fillText('NEAR SIDE', cx, cy + r + 16);
-  }
-
-  function drawDSNScene(ctx, W, H, t) {
-    ctx.clearRect(0, 0, W, H);
-    drawStarfield(ctx, W, H, 22);
-
-    const mx = W * 0.5, my = H * 0.46;
-    const mw = W * 0.86, mh = H * 0.52;
-    const x0 = mx - mw / 2, y0 = my - mh / 2;
-
-    // Simple world map outline (filled continents as rectangles — simplified)
-    ctx.fillStyle = 'rgba(30,50,40,0.6)';
-    ctx.fillRect(x0, y0, mw, mh);
-    ctx.strokeStyle = 'rgba(0,170,255,0.12)'; ctx.lineWidth = 1;
-    ctx.strokeRect(x0, y0, mw, mh);
-
-    // Lat/lon grid
-    ctx.strokeStyle = 'rgba(255,255,255,0.05)'; ctx.lineWidth = 0.5;
-    for (let lon = -180; lon <= 180; lon += 30) {
-      const gx = x0 + ((lon + 180) / 360) * mw;
-      ctx.beginPath(); ctx.moveTo(gx, y0); ctx.lineTo(gx, y0 + mh); ctx.stroke();
-    }
-    for (let lat = -90; lat <= 90; lat += 30) {
-      const gy = y0 + ((90 - lat) / 180) * mh;
-      ctx.beginPath(); ctx.moveTo(x0, gy); ctx.lineTo(x0 + mw, gy); ctx.stroke();
-    }
-
-    // Continent shapes (approximate filled regions)
-    const landAreas = [
-      // North America
-      { x: -130, y: 50, w: 75, h: 40 }, { x: -110, y: 20, w: 55, h: 35 },
-      // South America
-      { x: -80, y: -5, w: 35, h: 55 },
-      // Europe
-      { x: -10, y: 35, w: 40, h: 30 },
-      // Africa
-      { x: -20, y: -35, w: 55, h: 70 },
-      // Asia
-      { x: 25, y: 15, w: 110, h: 55 },
-      // Australia
-      { x: 114, y: -40, w: 50, h: 35 },
-    ];
-    ctx.fillStyle = 'rgba(50,80,60,0.5)';
-    landAreas.forEach(({ x, y, w, h }) => {
-      const px = x0 + ((x + 180) / 360) * mw;
-      const py = y0 + ((90 - (y + h)) / 180) * mh;
-      const pw = (w / 360) * mw;
-      const ph = (h / 180) * mh;
-      ctx.fillRect(px, py, pw, ph);
-    });
-
-    // DSN stations: Goldstone (-116.8, 35.4), Madrid (-4.2, 40.4), Canberra (148.9, -35.4)
-    const stations = [
-      { name: 'GOLDSTONE',  lon: -116.8, lat: 35.4,  color: '#00aaff' },
-      { name: 'MADRID',     lon:  -4.2,  lat: 40.4,  color: '#00aaff' },
-      { name: 'CANBERRA',   lon: 148.9,  lat: -35.4, color: '#00aaff' },
-    ];
-
-    // Moon position (upper right of map frame)
-    const moonX = W * 0.88, moonY = H * 0.14;
-    const moonR  = 10;
-    ctx.beginPath(); ctx.arc(moonX, moonY, moonR, 0, Math.PI * 2);
-    ctx.fillStyle = '#b0a898'; ctx.fill();
-    ctx.font = '8px monospace'; ctx.fillStyle = 'rgba(255,255,255,0.4)';
-    ctx.textAlign = 'center'; ctx.fillText('MOON', moonX, moonY + moonR + 10);
-
-    stations.forEach(({ name, lon, lat, color }, i) => {
-      const sx = x0 + ((lon + 180) / 360) * mw;
-      const sy = y0 + ((90 - lat) / 180) * mh;
-
-      // Coverage arc (pulse outward)
-      const arcR = (W * 0.12) + Math.sin(t / 800 + i * 2) * 5;
-      ctx.beginPath();
-      ctx.arc(sx, sy, arcR, 0, Math.PI * 2);
-      ctx.strokeStyle = `rgba(0,170,255,0.08)`;
-      ctx.lineWidth = arcR * 0.4;
-      ctx.stroke();
-      ctx.beginPath(); ctx.arc(sx, sy, arcR * 0.5, 0, Math.PI * 2);
-      ctx.strokeStyle = 'rgba(0,170,255,0.12)'; ctx.lineWidth = 2; ctx.stroke();
-
-      // Station dot
-      const glow = ctx.createRadialGradient(sx, sy, 0, sx, sy, 12);
-      glow.addColorStop(0, 'rgba(0,200,255,0.7)'); glow.addColorStop(1, 'transparent');
-      ctx.beginPath(); ctx.arc(sx, sy, 12, 0, Math.PI * 2); ctx.fillStyle = glow; ctx.fill();
-      ctx.beginPath(); ctx.arc(sx, sy, 4, 0, Math.PI * 2); ctx.fillStyle = '#00c8ff'; ctx.fill();
-
-      // Signal line to Moon
-      if (t > 500) {
-        const prog = (t / 1000 + i * 0.33) % 1;
-        const sigX = sx + (moonX - sx) * prog;
-        const sigY = sy + (moonY - sy) * prog;
-        ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(moonX, moonY);
-        ctx.strokeStyle = 'rgba(0,170,255,0.1)'; ctx.lineWidth = 1; ctx.stroke();
-        ctx.beginPath(); ctx.arc(sigX, sigY, 2.5, 0, Math.PI * 2);
-        ctx.fillStyle = `rgba(0,220,255,${0.8 - prog * 0.7})`; ctx.fill();
-      }
-
-      // Label
-      ctx.font = 'bold 9px monospace'; ctx.fillStyle = 'rgba(0,200,255,0.85)';
-      ctx.textAlign = lat < 0 ? 'right' : 'left';
-      ctx.fillText(name, sx + (lat < 0 ? -10 : 10), sy - 10);
-    });
-
-    // Equator label
-    const eqY = y0 + mh / 2;
-    ctx.font = '7px monospace'; ctx.fillStyle = 'rgba(255,255,255,0.2)';
-    ctx.textAlign = 'left'; ctx.fillText('EQUATOR', x0 + 4, eqY - 3);
-  }
-
-  // ─── NASA Astronomy Picture of the Day backgrounds ──────────────────────────
-
-  let apods = [];
-
-  async function loadApod() {
-    if (apods.length) return apods;
-    const day      = new Date().toISOString().slice(0, 10);
-    const cacheKey = 'apod_bg_' + day;
-    try {
-      const cached = localStorage.getItem(cacheKey);
-      if (cached) { apods = JSON.parse(cached); if (apods.length) return apods; }
-    } catch { /* ignore */ }
-
-    let raw = [];
-    try {
-      // Prefer the authenticated Edge Function (uses the user's NASA key); else DEMO_KEY
-      if (window.Auth?.callEdge && window.Auth.getSession?.()) {
-        const r = await Auth.callEdge('nasa', { endpoint: 'planetary/apod', params: 'count=12' });
-        if (Array.isArray(r?.data)) raw = r.data;
-      }
-      if (!raw.length) {
-        const r = await fetch('https://api.nasa.gov/planetary/apod?api_key=DEMO_KEY&count=12', { signal: AbortSignal.timeout(8000) });
-        raw = await r.json();
-      }
-    } catch { raw = []; }
-
-    apods = (raw || [])
-      .filter(a => a && a.media_type === 'image' && a.url)
-      .map(a => ({
-        url:    a.url,
-        title:  a.title || 'Astronomy Picture of the Day',
-        date:   a.date || '',
-        credit: a.copyright ? a.copyright.replace(/\s+/g, ' ').trim() : 'NASA · public domain',
-      }));
-    try { if (apods.length) localStorage.setItem(cacheKey, JSON.stringify(apods)); } catch { /* ignore */ }
-    return apods;
-  }
-
-  function applyBg(n) {
-    if (!apods.length) return;
-    const a   = apods[n % apods.length];
-    const bg  = document.getElementById('story-bg');
-    const cr  = document.getElementById('story-credit');
-    if (!bg) return;
-    const img = new Image();
-    img.onload = () => { bg.style.backgroundImage = `url("${a.url}")`; bg.classList.add('show'); };
-    img.src = a.url;
-    if (cr) cr.innerHTML =
-      `<span class="apod-tag">NASA · APOD${a.date ? ' · ' + a.date : ''}</span><br><b>${a.title}</b><br>${a.credit}`;
-  }
-
-  function applyBgToCurrent() { applyBg(current); }
-
-  // ─── Story mode engine ──────────────────────────────────────────────────────
-
-  let current  = 0;
-  let animId   = null;
-  let startT   = null;
-  let overlay  = null;
-  let stCanvas = null;
-  let stCtx    = null;
+  const $ = id => document.getElementById(id);
 
   function build() {
-    if (document.getElementById('story-overlay')) return;
+    if ($('story-overlay')) return;
 
-    // Open button
     const openBtn = document.createElement('button');
-    openBtn.id        = 'story-open-btn';
-    openBtn.className = 'tb-exhibit';
-    openBtn.innerHTML = '<span class="lb-glyph">⬡</span> STORY';
-    openBtn.onclick   = () => open(0);
-    (document.getElementById('exhibit-nav') || document.body).appendChild(openBtn);
+    openBtn.id = 'story-open-btn'; openBtn.className = 'tb-exhibit'; openBtn.type = 'button';
+    openBtn.innerHTML = '<i class="ph ph-book-open" aria-hidden="true"></i><span class="tb-label">Story</span>';
+    openBtn.onclick = () => open(0);
+    ($('exhibit-nav') || document.body).appendChild(openBtn);
 
-    // Overlay
     overlay = document.createElement('div');
     overlay.id = 'story-overlay';
+    overlay.setAttribute('role', 'dialog'); overlay.setAttribute('aria-modal', 'true'); overlay.setAttribute('aria-label', 'The Artemis story');
+    overlay.setAttribute('aria-hidden', 'true');
     overlay.innerHTML = `
-      <div class="story-bg" id="story-bg"></div>
-      <div class="story-header">
-        <span class="story-logo">⬡ <span>NASA</span> · ARTEMIS III · MISSION EXPLORER</span>
-        <div class="story-progress"><div class="story-progress-fill" id="sp-fill"></div></div>
-        <button class="story-close-btn" id="story-close">✕</button>
-      </div>
+      <div class="story-bg" id="story-bg-a"></div><div class="story-bg" id="story-bg-b"></div>
+      <div class="story-scrim"></div>
+      <header class="story-header">
+        <span class="story-logo">The Artemis story</span>
+        <div class="story-progress" aria-hidden="true"><div class="story-progress-fill" id="sp-fill"></div></div>
+        <button class="story-close-btn" id="story-close" type="button" aria-label="Close story"><i class="ph ph-x" aria-hidden="true"></i></button>
+      </header>
       <div class="story-body-wrap">
-        <div class="story-left" id="story-left"></div>
+        <nav class="story-chapters" id="story-chapters" aria-label="Chapters"></nav>
+        <div class="story-left" id="story-left" tabindex="-1"></div>
         <div class="story-right">
-          <canvas id="story-canvas"></canvas>
-          <div class="story-model" id="story-model" style="display:none"></div>
+          <div class="story-stage">
+            <canvas id="story-canvas" aria-hidden="true"></canvas>
+            <div class="story-model" id="story-model"></div>
+          </div>
+          <div class="story-credit" id="story-credit"></div>
         </div>
       </div>
-      <div class="story-credit" id="story-credit"></div>
       <div class="story-nav">
-        <button class="story-nav-btn" id="story-prev">← PREV</button>
-        <div class="story-dots" id="story-dots"></div>
-        <span class="story-hint">← → to navigate</span>
-        <button class="story-nav-btn" id="story-next">NEXT →</button>
-      </div>
-    `;
+        <button class="story-nav-btn" id="story-prev" type="button"><i class="ph ph-arrow-left" aria-hidden="true"></i>Previous</button>
+        <div class="story-dots" id="story-dots" aria-hidden="true"></div>
+        <button class="story-nav-btn primary" id="story-next" type="button">Next<i class="ph ph-arrow-right" aria-hidden="true"></i></button>
+      </div>`;
     document.body.appendChild(overlay);
-    loadApod().then(applyBgToCurrent);
-    loadModelManifest().then(() => { if (overlay.classList.contains('active')) _renderScene(current); });
 
-    stCanvas = document.getElementById('story-canvas');
-    stCtx    = stCanvas.getContext('2d');
+    stCanvas = $('story-canvas'); stCtx = stCanvas.getContext('2d');
 
-    // Dots
-    const dotsEl = document.getElementById('story-dots');
-    SCENES.forEach((_, i) => {
-      const d = document.createElement('button');
-      d.className = 'story-dot';
-      d.onclick   = () => goTo(i);
-      dotsEl.appendChild(d);
+    const chap = $('story-chapters'), dots = $('story-dots');
+    SCENES.forEach((s, i) => {
+      const b = document.createElement('button'); b.type = 'button'; b.className = 'story-chap';
+      b.innerHTML = `<span class="story-chap-n">${String(i + 1).padStart(2, '0')}</span><span class="story-chap-t">${s.chapter}</span>`;
+      b.onclick = () => goTo(i); chap.appendChild(b);
+      const d = document.createElement('button'); d.type = 'button'; d.className = 'story-dot'; d.setAttribute('aria-label', `Chapter ${i + 1}: ${s.chapter}`);
+      d.onclick = () => goTo(i); dots.appendChild(d);
     });
 
-    document.getElementById('story-close').onclick = close;
-    document.getElementById('story-prev').onclick  = () => goTo(current - 1);
-    document.getElementById('story-next').onclick  = () => goTo(current + 1);
+    $('story-close').onclick = close;
+    $('story-prev').onclick = () => goTo(current - 1);
+    $('story-next').onclick = () => goTo(current + 1);
+    overlay.addEventListener('keydown', onKey);
+    overlay.addEventListener('touchstart', e => { touchX = e.touches[0].clientX; }, { passive: true });
+    overlay.addEventListener('touchend', e => {
+      if (touchX === null) return; const dx = e.changedTouches[0].clientX - touchX; touchX = null;
+      if (Math.abs(dx) > 70) goTo(current + (dx < 0 ? 1 : -1));
+    }, { passive: true });
+    window.addEventListener('resize', () => { if (overlay.classList.contains('active') && reduce.matches && stCanvas.style.display !== 'none') paint(6000); });
 
-    document.addEventListener('keydown', onKey);
+    loadModelManifest();
   }
 
   function onKey(e) {
-    if (!overlay?.classList.contains('active')) return;
-    if (e.key === 'ArrowRight' || e.key === 'ArrowDown')  goTo(current + 1);
-    if (e.key === 'ArrowLeft'  || e.key === 'ArrowUp')    goTo(current - 1);
-    if (e.key === 'Escape')                                close();
+    if (e.key === 'Escape') { e.preventDefault(); close(); return; }
+    if (e.key === 'Tab') { // keep focus inside the dialog
+      const f = [...overlay.querySelectorAll('button:not([disabled]), model-viewer, [tabindex="0"]')].filter(x => x.offsetParent !== null);
+      if (!f.length) return;
+      const first = f[0], last = f[f.length - 1];
+      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+      return;
+    }
+    if (e.target.closest?.('model-viewer')) return; // model-viewer owns the arrow keys while focused
+    if (e.key === 'ArrowRight' || e.key === 'ArrowDown' || e.key === 'PageDown') { e.preventDefault(); goTo(current + 1); }
+    else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp' || e.key === 'PageUp') { e.preventDefault(); goTo(current - 1); }
+    else if (e.key === 'Home') goTo(0);
+    else if (e.key === 'End') goTo(SCENES.length - 1);
   }
 
   function open(n = 0) {
     build();
-    overlay.classList.add('active');
-    goTo(n, true);
+    lastFocus = document.activeElement;
+    overlay.classList.add('active'); overlay.setAttribute('aria-hidden', 'false');
+    document.body.style.overflow = 'hidden';
+    renderScene(n, 0, true);
+    setTimeout(() => $('story-next')?.focus({ preventScroll: true }), 50);
   }
 
   function close() {
-    overlay.classList.remove('active');
-    cancelAnimationFrame(animId);
-    animId = null;
+    overlay.classList.remove('active'); overlay.setAttribute('aria-hidden', 'true');
+    cancelAnimationFrame(animId); animId = null;
+    document.body.style.overflow = '';
+    hideModel();
+    lastFocus?.focus?.({ preventScroll: true });
   }
 
-  function goTo(n, immediate = false) {
-    if (n < 0 || n >= SCENES.length) return;
-    if (!immediate) {
-      overlay.classList.add('fading');
-      setTimeout(() => { overlay.classList.remove('fading'); _renderScene(n); }, 320);
-    } else {
-      _renderScene(n);
-    }
+  let busy = false;
+  function goTo(n) {
+    if (n < 0 || n >= SCENES.length || n === current || busy) return;
+    const dir = n > current ? 1 : -1;
+    if (reduce.matches) { renderScene(n, dir, true); return; }
+    busy = true;
+    overlay.dataset.dir = dir > 0 ? 'next' : 'prev';
+    overlay.classList.add('leaving');
+    setTimeout(() => {
+      overlay.classList.remove('leaving');
+      renderScene(n, dir, false);
+      busy = false;
+    }, 280);
   }
 
-  function _renderScene(n) {
+  // Count numeric stats up once per scene
+  function countUp(el, raw) {
+    const m = raw.match(/^(\d[\d,]*)(\.\d+)?$/);
+    if (!m || reduce.matches) return;
+    const dec = m[2] ? m[2].length - 1 : 0, target = parseFloat(raw.replace(/,/g, ''));
+    const t0 = performance.now(), dur = 1100;
+    (function tick(now) {
+      const p = clamp01((now - t0) / dur), v = target * (1 - Math.pow(1 - p, 3));
+      el.textContent = v.toLocaleString('en-US', { minimumFractionDigits: dec, maximumFractionDigits: dec });
+      if (p < 1) requestAnimationFrame(tick); else el.textContent = raw;
+    })(t0);
+  }
+
+  function renderScene(n, dir, immediate) {
     current = n;
     const sc = SCENES[n];
+    overlay.dataset.dir = dir >= 0 ? 'next' : 'prev';
 
-    applyBg(n); // swap in this scene's NASA APOD backdrop
+    setBackground(sc.bg);
+    if (SCENES[n + 1]?.bg) new Image().src = nasaImg(SCENES[n + 1].bg.id);
 
-    // Left panel
-    const leftEl = document.getElementById('story-left');
-    let html = `
-      <div class="story-chapter">${sc.chapter}</div>
-      <div class="story-scene-label">SCENE ${n + 1} / ${SCENES.length}</div>
-      <div class="story-title">${sc.title}</div>
-      <div class="story-text">${sc.text || ''}</div>
-    `;
+    let html = `<h2 class="story-title" style="--k:0">${sc.title}</h2>`;
+    html += sc.text.map((p, i) => `<p class="story-text" style="--k:${i + 1}">${p}</p>`).join('');
+    const k0 = sc.text.length + 1;
 
     if (sc.compare) {
-      html += `<div class="story-compare">`;
-      const l = sc.compare.left, r = sc.compare.right;
-      html += `<div class="cmp-col ${l.color}-col">
-        <div class="cmp-mission ${l.color}">${l.label}${l.subLabel ? ` <span style="opacity:.5;font-size:8px">· ${l.subLabel}</span>` : ''}</div>`;
-      l.rows.forEach(row => html += `<div class="cmp-row"><span class="cmp-key">${row.k}</span><span class="cmp-val ${row.hi ? 'hi' : ''}">${row.v}</span></div>`);
-      html += `</div>`;
-      html += `<div class="cmp-col ${r.color}-col">
-        <div class="cmp-mission ${r.color}">${r.label}${r.subLabel ? ` <span style="opacity:.5;font-size:8px">· ${r.subLabel}</span>` : ''}</div>`;
-      r.rows.forEach(row => html += `<div class="cmp-row"><span class="cmp-key">${row.k}</span><span class="cmp-val">${row.v}</span></div>`);
-      html += `</div></div>`;
+      const col = c => `<div class="cmp-col ${c.tone}"><div class="cmp-mission">${c.label}</div>${c.rows.map(([k, v]) => `<div class="cmp-row"><span class="cmp-key">${k}</span><span class="cmp-val">${v}</span></div>`).join('')}</div>`;
+      html += `<div class="story-compare" style="--k:${k0}">${col(sc.compare.left)}${col(sc.compare.right)}</div>`;
     }
-
     if (sc.stats) {
-      html += `<div class="story-stats">`;
-      sc.stats.forEach(s => {
-        html += `<div class="story-stat">
+      html += `<div class="story-stats">${sc.stats.map((s, i) => `
+        <div class="story-stat${i === 0 ? ' feature' : ''}" style="--k:${k0 + i}">
           <div class="stat-label">${s.label}</div>
-          <div class="stat-val">${s.val}<span class="stat-unit">${s.unit || ''}</span></div>
-          ${s.sub     ? `<div class="stat-sub">${s.sub}</div>` : ''}
-          ${s.compare ? `<div class="stat-compare">${s.compare}</div>` : ''}
-        </div>`;
-      });
-      html += `</div>`;
+          <div class="stat-val"><span class="stat-num" data-raw="${s.val}">${s.val}</span>${s.unit ? `<span class="stat-unit">${s.unit}</span>` : ''}</div>
+          ${s.sub ? `<div class="stat-sub">${s.sub}</div>` : ''}
+        </div>`).join('')}</div>`;
     }
+    $('story-left').innerHTML = html;
+    $('story-left').scrollTop = 0;
+    $('story-left').querySelectorAll('.stat-num').forEach(el => setTimeout(() => countUp(el, el.dataset.raw), 350));
 
-    leftEl.innerHTML = html;
-
-    // Progress fill
-    document.getElementById('sp-fill').style.width = `${(n / (SCENES.length - 1)) * 100}%`;
-
-    // Dots
+    $('sp-fill').style.transform = `scaleX(${(n + 1) / SCENES.length})`;
     document.querySelectorAll('.story-dot').forEach((d, i) => d.classList.toggle('active', i === n));
+    document.querySelectorAll('.story-chap').forEach((c, i) => { c.classList.toggle('active', i === n); c.classList.toggle('done', i < n); if (i === n) c.setAttribute('aria-current', 'step'); else c.removeAttribute('aria-current'); });
+    $('story-prev').disabled = n === 0;
+    $('story-next').disabled = n === SCENES.length - 1;
 
-    // Nav buttons
-    document.getElementById('story-prev').disabled = n === 0;
-    document.getElementById('story-next').disabled = n === SCENES.length - 1;
+    // Re-trigger the entrance animation
+    overlay.classList.remove('entering'); void overlay.offsetWidth; overlay.classList.add('entering');
 
-    // Visual: real 3D model if the scene has one, otherwise the canvas animation
-    cancelAnimationFrame(animId);
-    startT = null;
-
-    if (sc.model && modelManifest && modelManifest.includes(sc.model)) {
-      showSceneModel(sc);
-      return;
-    }
-    hideSceneModel();
-
-    // Canvas animation
-    resizeCanvas();
-    function loop(ts) {
+    cancelAnimationFrame(animId); startT = null;
+    if (sc.model && modelManifest?.includes(sc.model)) { showModel(sc); return; }
+    hideModel();
+    (function loop(ts) {
       if (!startT) startT = ts;
-      const elapsed = ts - startT;
-      resizeCanvas();
-      sc.draw(stCtx, stCanvas.width, stCanvas.height, elapsed);
-      animId = requestAnimationFrame(loop);
-    }
-    animId = requestAnimationFrame(loop);
+      paint(reduce.matches ? 6000 : ts - startT);   // reduced motion: one settled frame instead of animation
+      if (!reduce.matches) animId = requestAnimationFrame(loop);
+    })(performance.now());
   }
 
-  // ─── Real 3D models inside the story ────────────────────────────────────────
+  function paint(t) {
+    sizeCanvas();
+    const W = stCanvas.clientWidth, H = stCanvas.clientHeight;
+    stCtx.clearRect(0, 0, W, H);
+    SCENES[current].draw(stCtx, W, H, t);
+  }
 
-  let modelManifest = null;
+  function sizeCanvas() {
+    const r = stCanvas.parentElement.getBoundingClientRect(), dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const w = Math.floor(r.width), h = Math.floor(r.height);
+    if (stCanvas.width !== w * dpr || stCanvas.height !== h * dpr) { stCanvas.width = w * dpr; stCanvas.height = h * dpr; }
+    stCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
 
+  // Cross-fading photo backdrop with a slow push-in
+  function setBackground(bg) {
+    const cr = $('story-credit');
+    if (!bg) return;
+    const url = nasaImg(bg.id), layers = [$('story-bg-a'), $('story-bg-b')];
+    const img = new Image();
+    img.onload = () => {
+      bgLayer = 1 - bgLayer;
+      const on = layers[bgLayer], off = layers[1 - bgLayer];
+      on.style.backgroundImage = `url("${url}")`;
+      on.classList.remove('zoom'); void on.offsetWidth; on.classList.add('show', 'zoom');
+      off.classList.remove('show');
+    };
+    img.src = url;
+    if (cr) cr.textContent = bg.credit;
+  }
+
+  // ── 3D models inside chapters ──────────────────────────────────────────────
   async function loadModelManifest() {
     if (modelManifest) return modelManifest;
-    try {
-      const res = await fetch('assets/models/manifest.json', { cache: 'no-cache' });
-      modelManifest = res.ok ? await res.json() : [];
-    } catch { modelManifest = []; }
+    try { const r = await fetch('assets/models/manifest.json', { cache: 'no-cache' }); modelManifest = r.ok ? await r.json() : []; }
+    catch { modelManifest = []; }
     return modelManifest;
   }
 
-  function showSceneModel(sc) {
-    const wrap = document.getElementById('story-model');
-    const cv   = document.getElementById('story-canvas');
-    if (!wrap) return;
-    if (cv) cv.style.display = 'none';
-    wrap.style.display = 'block';
+  function showModel(sc) {
+    const wrap = $('story-model'), cv = $('story-canvas');
+    cv.style.display = 'none'; wrap.style.display = 'block';
     wrap.innerHTML = `
-      <model-viewer
-        src="assets/models/${sc.model}/scene.gltf"
-        alt="${sc.modelLabel || sc.title}"
-        camera-controls auto-rotate rotation-per-second="22deg"
-        interaction-prompt="none"
-        shadow-intensity="1.1" exposure="1.15" environment-image="neutral"
-        loading="eager" reveal="auto"
+      <model-viewer src="assets/models/${sc.model}/scene.gltf" alt="3D model of ${sc.modelLabel}"
+        camera-controls ${reduce.matches ? '' : 'auto-rotate rotation-per-second="20deg"'} interaction-prompt="none"
+        shadow-intensity="1.1" exposure="1.15" environment-image="neutral" loading="eager" reveal="auto"
         style="width:100%;height:100%;background:transparent;">
-        <div slot="poster" class="story-model-poster">Loading model…</div>
+        <div slot="poster" class="story-model-poster">Loading model</div>
       </model-viewer>
-      ${sc.modelLabel ? `<div class="story-model-cap">▸ ${sc.modelLabel} · drag to inspect</div>` : ''}`;
+      <div class="story-model-cap">${sc.modelLabel}. Drag to inspect.</div>`;
   }
-
-  function hideSceneModel() {
-    const wrap = document.getElementById('story-model');
-    const cv   = document.getElementById('story-canvas');
+  function hideModel() {
+    const wrap = $('story-model'), cv = $('story-canvas');
     if (wrap) { wrap.style.display = 'none'; wrap.innerHTML = ''; }
-    if (cv)   cv.style.display = 'block';
+    if (cv) cv.style.display = 'block';
   }
 
-  function resizeCanvas() {
-    const r = stCanvas.parentElement.getBoundingClientRect();
-    if (stCanvas.width !== Math.floor(r.width) || stCanvas.height !== Math.floor(r.height)) {
-      stCanvas.width  = Math.floor(r.width);
-      stCanvas.height = Math.floor(r.height);
-    }
-  }
-
-  // Mount the launch button as soon as the DOM is ready
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', build);
   else build();
 
